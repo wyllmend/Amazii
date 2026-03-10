@@ -56,7 +56,7 @@ export default function AdminOrders() {
       } else if (event === 'UPDATE') {
         setOrders(prev => prev.map(o => o.id === order.id ? order : o));
       } else if (event === 'DELETE') {
-        setOrders(prev => prev.filter(o => o.id === order.id));
+        setOrders(prev => prev.filter(o => o.id !== order.id));
       }
     });
 

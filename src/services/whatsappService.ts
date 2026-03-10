@@ -112,8 +112,7 @@ export const whatsappService = {
 
   async findMessages(remoteJid: string) {
     try {
-      // Evolution API v2 often supports remoteJid directly as a query param
-      const response = await fetch(`${API_URL}/chat/findMessages/${INSTANCE}?remoteJid=${encodeURIComponent(remoteJid)}`, {
+      const response = await fetch(`${API_URL}/chat/findMessages/${INSTANCE}?where=%7B%22key%22%3A%7B%22remoteJid%22%3A%22${encodeURIComponent(remoteJid)}%22%7D%7D`, {
         headers: {
           'apikey': API_KEY
         }
