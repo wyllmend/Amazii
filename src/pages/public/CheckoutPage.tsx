@@ -1,0 +1,431 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { useCartStore } from '@/store/cartStore';
+import { supabaseService } from '@/services/supabaseService';
+import { formatCurrency, normalizePhone } from '@/lib/utils';
+import { Loader2, CreditCard, QrCode, User, CheckCircle, Store, Bike, Banknote } from 'lucide-react';
+import { toast } from 'sonner';
+import { StoreSettings } from '@/services/types';
+
+const checkoutSchema = z.object({
+  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  phone: z.string().min(10, 'Telefone inválido'),
+  deliveryMethod: z.enum(['delivery', 'pickup']),
+  address: z.string().optional(),
+  neighborhood: z.string().optional(),
+  observation: z.string().optional(),
+  paymentMethod: z.enum(['pix', 'credit_card', 'dinheiro']),
+  changeFor: z.string().optional(),
+});
+
+type CheckoutForm = z.infer<typeof checkoutSchema>;
+
+export default function CheckoutPage() {
+  const navigate = useNavigate();
+  const { items, subtotal, coupon, clearCart } = useCartStore();
+  const [loading, setLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [settingsError, setSettingsError] = useState(false);
+  const [customerIp, setCustomerIp] = useState<string>('');
+
+  useEffect(() => {
+    setSettingsLoading(true);
+    supabaseService.getSettings()
+      .then(s => {
+        setSettings(s);
+        setSettingsError(false);
+      })
+      .catch(() => {
+        setSettingsError(true);
+        toast.error('Erro ao carregar configurações. Tente recarregar.');
+      })
+      .finally(() => setSettingsLoading(false));
+
+    // Fetch client IP — non-critical, failure is fine
+    fetch('https://api.ipify.org?format=json')
+      .then(res => res.json())
+      .then(data => setCustomerIp(data?.ip || ''))
+      .catch(() => {}); // silently ignore
+  }, []);
+
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
+    resolver: zodResolver(checkoutSchema),
+    defaultValues: {
+      deliveryMethod: 'delivery',
+      paymentMethod: 'pix',
+      name: (() => { try { return localStorage.getItem('amazii_customer_name') || ''; } catch { return ''; } })(),
+      phone: (() => { try { return localStorage.getItem('amazii_customer_phone') || ''; } catch { return ''; } })(),
+    }
+  });
+
+  const deliveryMethod = watch('deliveryMethod');
+  const selectedNeighborhood = watch('neighborhood');
+  const paymentMethod = watch('paymentMethod');
+
+  // Safe accessors — never throw even if settings is null
+  const neighborhoods = settings?.deliveryFeesByNeighborhood ?? [];
+  const deliveryFeeBase = settings?.deliveryFeeBase ?? 0;
+  const allowPickup = settings?.allowPickup ?? false;
+  const storeAddress = settings?.storeAddress ?? '';
+
+  const getRawDeliveryFee = (): number | null => {
+    if (deliveryMethod === 'pickup') return 0;
+    if (selectedNeighborhood && Array.isArray(neighborhoods)) {
+      const rule = neighborhoods.find(r => r.neighborhood === selectedNeighborhood);
+      if (rule) return rule.fee;
+      return deliveryFeeBase; // fallback if neighborhood not found
+    }
+    return null; // Don't charge base fee before they pick a neighborhood
+  };
+
+  const rawFee = getRawDeliveryFee();
+
+  const calculateDiscount = (): number => {
+    if (!coupon) return 0;
+    const sub = subtotal();
+    if (coupon.type === 'percentage') return sub * (coupon.value / 100);
+    if (coupon.type === 'fixed') return Math.min(coupon.value, sub);
+    if (coupon.type === 'free_shipping') return rawFee ?? 0;
+    return 0;
+  };
+
+  const discount = calculateDiscount();
+  const deliveryFee = coupon?.type === 'free_shipping' ? 0 : rawFee;
+  const finalTotal = Math.max(0, subtotal() + (deliveryFee ?? 0) - discount);
+
+  const onSubmit = async (data: CheckoutForm) => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      if (items.length === 0) {
+        toast.error('Carrinho vazio');
+        return;
+      }
+
+      if (data.deliveryMethod === 'delivery') {
+        if (!data.address || data.address.length < 5) {
+          toast.error('Informe o endereço completo para entrega');
+          setLoading(false);
+          return;
+        }
+        if (!data.neighborhood) {
+          toast.error('Selecione um bairro para entrega');
+          setLoading(false);
+          return;
+        }
+        if (deliveryFee === null) {
+          toast.error('Não foi possível calcular a taxa de entrega deste bairro.');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const changeForValue = data.changeFor ? Number(data.changeFor) : undefined;
+
+      if (data.paymentMethod === 'dinheiro' && changeForValue && changeForValue < finalTotal) {
+        toast.error('O valor do troco deve ser maior que o total do pedido');
+        return;
+      }
+
+      const isStoreOpen = await supabaseService.isStoreOpen().catch(() => true);
+      if (!isStoreOpen) {
+        toast.error('A loja está fechada no momento. Tente mais tarde.');
+        return;
+      }
+
+      const normalizedPhone = normalizePhone(data.phone);
+
+      if (coupon) {
+        const validCoupon = await supabaseService.validateCoupon(coupon.code, normalizedPhone, customerIp).catch(() => null);
+        if (!validCoupon) {
+          toast.error('Este cupom é válido apenas para a primeira compra ou já foi utilizado.');
+          return;
+        }
+      }
+
+      const order = await supabaseService.createOrder({
+        customerName: data.name,
+        customerPhone: normalizedPhone,
+        address: data.deliveryMethod === 'delivery' ? (data.address ?? '') : undefined,
+        neighborhood: data.deliveryMethod === 'delivery' ? (data.neighborhood ?? '') : undefined,
+        observation: data.observation ?? '',
+        items: items.map(i => ({
+          productId: i.id,
+          productName: i.name,
+          quantity: i.quantity,
+          price: i.price,
+          total: i.totalPrice * i.quantity,
+          selectedOptions: i.selectedOptions ?? []
+        })),
+        subtotal: subtotal(),
+        deliveryFee: deliveryFee ?? 0,
+        discount,
+        total: finalTotal,
+        paymentMethod: data.paymentMethod,
+        changeFor: data.paymentMethod === 'dinheiro' ? changeForValue : undefined,
+        deliveryMethod: data.deliveryMethod,
+        customerIp: customerIp || undefined,
+      }, coupon?.code);
+
+      try {
+        localStorage.setItem('amazii_customer_name', data.name);
+        localStorage.setItem('amazii_customer_phone', normalizedPhone);
+      } catch { /* localStorage might be blocked in some mobile browsers */ }
+
+      clearCart();
+      toast.success('Pedido realizado com sucesso!');
+      navigate(`/pedido/${order.id}`);
+    } catch (error) {
+      console.error('Order error:', error);
+      toast.error('Erro ao processar pedido. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (items.length === 0) {
+    navigate('/carrinho');
+    return null;
+  }
+
+  if (settingsLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-amazii-primary" />
+      </div>
+    );
+  }
+
+  if (settingsError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-center px-4">
+        <p className="text-gray-600">Não foi possível carregar as configurações.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-amazii-primary text-white px-6 py-3 rounded-xl font-medium"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto pb-24">
+      <h1 className="text-2xl font-bold mb-6">Finalizar seu Pedido</h1>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="grid md:grid-cols-2 gap-6">
+        <div className="space-y-6">
+
+          {/* Personal Info */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <User className="w-5 h-5 text-amazii-primary" />
+              Seus Dados
+            </h3>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+              <input
+                {...register('name')}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                placeholder="Ex: João Silva"
+                autoComplete="name"
+              />
+              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Telefone (WhatsApp)</label>
+              <input
+                {...register('phone')}
+                type="tel"
+                inputMode="tel"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                placeholder="(11) 99999-9999"
+                autoComplete="tel"
+              />
+              {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
+            </div>
+          </div>
+
+          {/* Delivery Method */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              {deliveryMethod === 'delivery' ? <Bike className="w-5 h-5 text-amazii-primary" /> : <Store className="w-5 h-5 text-amazii-primary" />}
+              Entrega / Retirada
+            </h3>
+
+            <div className={`grid gap-4 ${allowPickup ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <label className={`cursor-pointer border rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all ${
+                deliveryMethod === 'delivery'
+                  ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input type="radio" value="delivery" {...register('deliveryMethod')} className="sr-only" />
+                <Bike className="w-6 h-6" />
+                <span className="font-medium text-sm">Entrega</span>
+              </label>
+
+              {allowPickup && (
+                <label className={`cursor-pointer border rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all ${
+                  deliveryMethod === 'pickup'
+                    ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <input type="radio" value="pickup" {...register('deliveryMethod')} className="sr-only" />
+                  <Store className="w-6 h-6" />
+                  <span className="font-medium text-sm">Retirada</span>
+                </label>
+              )}
+            </div>
+
+            {deliveryMethod === 'delivery' && (
+              <div className="space-y-4 pt-4 border-t border-gray-100">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                  <select
+                    {...register('neighborhood')}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all bg-white text-base"
+                  >
+                    <option value="">Selecione seu bairro...</option>
+                    {Array.isArray(neighborhoods) && neighborhoods.map((rule, idx) => (
+                      <option key={idx} value={rule.neighborhood}>
+                        {rule.neighborhood} {rule.fee > 0 ? `(+ ${formatCurrency(rule.fee)})` : '(Grátis)'}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.neighborhood && <p className="text-red-500 text-xs mt-1">{errors.neighborhood.message}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço Completo</label>
+                  <input
+                    {...register('address')}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                    placeholder="Rua, Número, Complemento"
+                    autoComplete="street-address"
+                  />
+                  {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address.message}</p>}
+                </div>
+              </div>
+            )}
+
+            {deliveryMethod === 'pickup' && (
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-start gap-3 bg-amazii-muted p-4 rounded-xl">
+                  <Store className="w-5 h-5 text-amazii-primary mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-amazii-primary">Retirada na Loja</p>
+                    {storeAddress && typeof storeAddress === 'string' && <p className="text-gray-600 mt-1">{storeAddress}</p>}
+                    <p className="text-gray-500 mt-1 text-xs">Você será notificado quando o pedido estiver pronto.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Observação (Opcional)</label>
+              <textarea
+                {...register('observation')}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                placeholder="Ex: Retirar cebola, campainha não funciona..."
+                rows={2}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Payment */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-amazii-primary" />
+              Pagamento
+            </h3>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: 'pix', label: 'Pix', icon: <QrCode className="w-5 h-5" /> },
+                { value: 'credit_card', label: 'Cartão', icon: <CreditCard className="w-5 h-5" /> },
+                { value: 'dinheiro', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" /> },
+              ].map(opt => (
+                <label key={opt.value} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition-all text-center ${
+                  paymentMethod === opt.value
+                    ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <input type="radio" value={opt.value} {...register('paymentMethod')} className="sr-only" />
+                  {opt.icon}
+                  <span className="font-medium text-xs">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {paymentMethod === 'dinheiro' && (
+              <div className="pt-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Troco para quanto? (Opcional)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    {...register('changeFor')}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                    placeholder="50,00"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-lg">Resumo</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>Subtotal ({items.length} {items.length === 1 ? 'item' : 'itens'})</span>
+                <span>{formatCurrency(subtotal())}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>{deliveryMethod === 'pickup' ? 'Retirada' : 'Entrega'}</span>
+                <span>{deliveryMethod === 'pickup' || deliveryFee === 0 ? 'Grátis' : (deliveryFee === null ? 'A calcular' : formatCurrency(deliveryFee))}</span>
+              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-amazii-green font-medium">
+                  <span>Desconto {coupon ? `(${coupon.code})` : ''}</span>
+                  <span>- {formatCurrency(discount)}</span>
+                </div>
+              )}
+              <div className="border-t border-gray-100 pt-3 flex justify-between font-bold text-lg text-gray-900">
+                <span>Total</span>
+                <span>{deliveryMethod === 'delivery' && deliveryFee === null ? 'A calcular' : formatCurrency(finalTotal)}</span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-amazii-primary hover:bg-amazii-dark text-white font-bold py-4 rounded-xl shadow-lg shadow-amazii-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-base"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" />
+                  Confirmar Pedido
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

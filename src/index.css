@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --amazii-primary: #7B2CBF;
+  --amazii-secondary: #9D4EDD;
+  --amazii-dark: #5A189A;
+  --amazii-muted: rgba(123, 44, 191, 0.08);
+}
+
+@theme {
+  --color-amazii-primary: var(--amazii-primary);
+  --color-amazii-secondary: var(--amazii-secondary);
+  --color-amazii-dark: var(--amazii-dark);
+  --color-amazii-muted: var(--amazii-muted);
+
+  --color-amazii-green: #38B000;
+  --color-amazii-light: #F8F9FA;
+  --color-amazii-text: #1E1E1E;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer utilities {
+  .bg-amazii-gradient {
+    background: linear-gradient(135deg, var(--amazii-primary), var(--amazii-secondary));
+  }
+  .text-amazii-gradient {
+    background: linear-gradient(135deg, var(--amazii-primary), var(--amazii-secondary));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  /* safe area for iPhone home bar */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Global resets for better mobile UX */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+}
+
+/* Prevent iOS from zooming on input focus */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Better button press feel */
+button, a {
+  touch-action: manipulation;
+}
