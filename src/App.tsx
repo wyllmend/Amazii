@@ -24,7 +24,6 @@ import AdminCategories from '@/pages/admin/AdminCategories';
 import AdminCoupons from '@/pages/admin/AdminCoupons';
 import AdminLeads from '@/pages/admin/AdminLeads';
 import AdminWhatsApp from '@/pages/admin/AdminWhatsApp';
-import AdminChat from '@/pages/admin/AdminChat';
 
 function App() {
   return (
@@ -51,7 +50,6 @@ function App() {
           <Route path="cupons" element={<AdminCoupons />} />
           <Route path="leads" element={<AdminLeads />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
-          <Route path="chat" element={<AdminChat />} />
           <Route path="configuracoes" element={<AdminSettings />} />
         </Route>
       </Routes>

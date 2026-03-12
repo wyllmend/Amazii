@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useCartStore } from '@/store/cartStore';
 import { supabaseService } from '@/services/supabaseService';
+import { whatsappService } from '@/services/whatsappService';
 import { formatCurrency, normalizePhone } from '@/lib/utils';
 import { Loader2, CreditCard, QrCode, User, CheckCircle, Store, Bike, Banknote } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +32,67 @@ export default function CheckoutPage() {
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [settingsError, setSettingsError] = useState(false);
   const [customerIp, setCustomerIp] = useState<string>('');
+
+  // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  /** Builds a WhatsApp confirmation message that mirrors the printed receipt. */
+  const buildConfirmationMessage = (order: any, storeName: string): string => {
+    const trackingUrl = `${window.location.origin}/pedido/${order.id}`;
+
+    const paymentLabel = (() => {
+      if (order.paymentMethod === 'credit_card') return 'Cartão de Crédito';
+      if (order.paymentMethod === 'dinheiro') {
+        if (order.changeFor) {
+          const troco = order.changeFor - order.total;
+          return `Dinheiro (Troco para ${formatCurrency(order.changeFor)} — levar ${formatCurrency(troco)} de troco)`;
+        }
+        return 'Dinheiro (Sem troco)';
+      }
+      return 'Pix';
+    })();
+
+    const itemsText = order.items
+      .map((item: any) => {
+        let line = `${item.quantity}x ${item.productName} — ${formatCurrency(item.total)}`;
+        if (item.selectedOptions?.length > 0) {
+          const opts = item.selectedOptions
+            .map((o: any) => `  + ${o.quantity > 1 ? `${o.quantity}x ` : ''}${o.optionName}`)
+            .join('\n');
+          line += `\n${opts}`;
+        }
+        return line;
+      })
+      .join('\n');
+
+    const deliveryLine =
+      order.deliveryMethod === 'delivery'
+        ? `🛵 *Entrega*\n📍 ${order.address}, ${order.neighborhood}`
+        : `🛍️ *Retirada na loja*`;
+
+    let totalsText = `Subtotal: ${formatCurrency(order.subtotal)}\n`;
+    if (order.deliveryFee > 0) totalsText += `Entrega: ${formatCurrency(order.deliveryFee)}\n`;
+    if (order.discount > 0)    totalsText += `Desconto: - ${formatCurrency(order.discount)}\n`;
+    totalsText += `*TOTAL: ${formatCurrency(order.total)}*`;
+
+    return [
+      `✅ *Pedido recebido em ${storeName}!*`,
+      `Nº ${order.id.slice(0, 8).toUpperCase()}`,
+      '',
+      deliveryLine,
+      '',
+      '*Itens:*',
+      itemsText,
+      '',
+      totalsText,
+      `💳 Pagamento: ${paymentLabel}`,
+      order.observation ? `📝 Obs: ${order.observation}` : '',
+      '',
+      `📦 Acompanhe seu pedido:`,
+      trackingUrl,
+    ]
+      .filter(l => l !== null)
+      .join('\n');
+  };
 
   useEffect(() => {
     setSettingsLoading(true);
@@ -179,6 +241,16 @@ export default function CheckoutPage() {
 
       clearCart();
       toast.success('Pedido realizado com sucesso!');
+
+      // Send WhatsApp confirmation to customer (non-blocking)
+      try {
+        const storeName = settings?.storeName || 'nossa loja';
+        const msg = buildConfirmationMessage(order, storeName);
+        whatsappService.sendMessage(normalizedPhone, msg);
+      } catch (err) {
+        console.warn('WhatsApp confirmation skipped:', err);
+      }
+
       navigate(`/pedido/${order.id}`);
     } catch (error) {
       console.error('Order error:', error);

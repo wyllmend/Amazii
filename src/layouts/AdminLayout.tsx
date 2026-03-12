@@ -144,7 +144,6 @@ export default function AdminLayout() {
     { icon: BarChart3, label: 'Relatórios', path: '/admin/relatorios' },
     { icon: Tag, label: 'Cupons', path: '/admin/cupons' },
     { icon: Users, label: 'Leads / CRM', path: '/admin/leads' },
-    { icon: MessageCircle, label: 'Mensagens', path: '/admin/chat' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/admin/whatsapp' },
     { icon: Settings, label: 'Configurações', path: '/admin/configuracoes' },
   ];
