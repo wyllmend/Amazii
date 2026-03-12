@@ -7,6 +7,7 @@ import { StoreSettings } from '@/services/types';
 import { Loader2, Save, AlertTriangle, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
+import { useTenantStore } from '@/store/tenantStore';
 
 const settingsSchema = z.object({
   storeName: z.string().min(1, 'Nome obrigatório'),
@@ -116,6 +117,7 @@ const DAYS = [
 ];
 
 export default function AdminSettings() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const { refreshSettings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -142,8 +144,9 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const fetchSettings = async () => {
+      if (!restaurantId) return;
       try {
-        const data = await supabaseService.getSettings();
+        const data = await supabaseService.getSettings(restaurantId);
         // Set all values
         Object.entries(data).forEach(([key, value]) => {
           setValue(key as any, value);
@@ -155,12 +158,13 @@ export default function AdminSettings() {
       }
     };
     fetchSettings();
-  }, [setValue]);
+  }, [setValue, restaurantId]);
 
   const onSubmit = async (data: SettingsForm) => {
+    if (!restaurantId) return;
     console.log('Submitting settings data:', data);
     try {
-      const result = await supabaseService.updateSettings(data);
+      const result = await supabaseService.updateSettings(data, restaurantId);
       console.log('Update result:', result);
       await refreshSettings();
       toast.success('Configurações salvas com sucesso');

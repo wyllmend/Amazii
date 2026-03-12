@@ -6,6 +6,7 @@ import { supabaseService } from '@/services/supabaseService';
 import { Category } from '@/services/types';
 import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTenantStore } from '@/store/tenantStore';
 
 const categorySchema = z.object({
   name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -15,6 +16,7 @@ const categorySchema = z.object({
 type CategoryForm = z.infer<typeof categorySchema>;
 
 export default function AdminCategories() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,8 +30,9 @@ export default function AdminCategories() {
   });
 
   const fetchCategories = async () => {
+    if (!restaurantId) return;
     try {
-      const data = await supabaseService.getCategories();
+      const data = await supabaseService.getCategories(restaurantId);
       setCategories(data);
     } catch (error) {
       toast.error('Erro ao carregar categorias');
@@ -40,7 +43,7 @@ export default function AdminCategories() {
 
   useEffect(() => {
     fetchCategories();
-  }, []);
+  }, [restaurantId]);
 
   const handleOpenModal = (category?: Category) => {
     if (category) {
@@ -61,12 +64,13 @@ export default function AdminCategories() {
   };
 
   const onSubmit = async (data: CategoryForm) => {
+    if (!restaurantId) return;
     try {
       if (editingCategory) {
         await supabaseService.updateCategory(editingCategory.id, data);
         toast.success('Categoria atualizada');
       } else {
-        await supabaseService.createCategory(data);
+        await supabaseService.createCategory(data, restaurantId);
         toast.success('Categoria criada');
       }
       handleCloseModal();

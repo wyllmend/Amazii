@@ -4,9 +4,14 @@ import { Product, Category, StoreSettings } from '@/services/types';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Search, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+import { Outlet, Link, useLocation, useParams } from 'react-router-dom';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function HomePage() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
+  const baseUrl = tenantSlug ? `/${tenantSlug}` : '';
+  const restaurantId = useTenantStore((state) => state.restaurantId);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
@@ -15,10 +20,14 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
     Promise.all([
-      supabaseService.getProducts(),
-      supabaseService.getCategories(),
-      supabaseService.getSettings()
+      supabaseService.getProducts(restaurantId),
+      supabaseService.getCategories(restaurantId),
+      supabaseService.getSettings(restaurantId)
     ])
       .then(([prods, cats, storeSettings]) => {
         setProducts(prods ?? []);
@@ -27,7 +36,7 @@ export default function HomePage() {
       })
       .catch(() => toast.error('Erro ao carregar produtos'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [restaurantId]);
 
   const filteredProducts = products.filter(product => {
     const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
@@ -129,7 +138,7 @@ export default function HomePage() {
         {filteredProducts.map((product) => (
           <Link
             key={product.id}
-            to={`/produto/${product.id}`}
+            to={`${baseUrl}/produto/${product.id}`}
             className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col group active:scale-[0.98]"
           >
             <div className="aspect-square bg-gray-100 relative overflow-hidden">

@@ -1,30 +1,84 @@
-import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, FormEvent, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabaseService } from '@/services/supabaseService';
 import { toast } from 'sonner';
 import { Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function AdminLoginPage() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const { restaurantId, setTenant, clearTenant } = useTenantStore();
+  const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantError, setTenantError] = useState(false);
+
+  useEffect(() => {
+    async function resolveTenant() {
+      if (!tenantSlug) {
+        setTenantLoading(false);
+        setTenantError(true);
+        return;
+      }
+      try {
+        const rest = await supabaseService.getRestaurantBySlug(tenantSlug);
+        if (rest && rest.active) {
+          setTenant(rest.id, tenantSlug);
+          setTenantError(false);
+        } else {
+          clearTenant();
+          setTenantError(true);
+        }
+      } catch (err) {
+        clearTenant();
+        setTenantError(true);
+      } finally {
+        setTenantLoading(false);
+      }
+    }
+    resolveTenant();
+  }, [tenantSlug, setTenant, clearTenant]);
+
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
+    if (!restaurantId) return;
     setLoading(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (await supabaseService.loginAdmin(email, password)) {
-      toast.success('Bem-vindo de volta!');
-      navigate('/admin/dashboard');
-    } else {
-      toast.error('Credenciais inválidas');
+    try {
+      if (await supabaseService.loginAdmin(email, password, restaurantId)) {
+        toast.success('Bem-vindo de volta!');
+        navigate(`/admin/${tenantSlug}/dashboard`);
+      } else {
+        toast.error('Credenciais inválidas');
+      }
+    } catch {
+      toast.error('Ocorreu um erro. Tente novamente.');
+    } finally {
       setLoading(false);
     }
   };
+
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-amazii-light flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-amazii-primary" />
+      </div>
+    );
+  }
+
+  if (tenantError) {
+    return (
+      <div className="min-h-screen bg-amazii-light flex items-center justify-center">
+        <div className="text-center px-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Página não encontrada</h1>
+          <p className="text-gray-500">A página de login deste restaurante não está acessível.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-amazii-light flex items-center justify-center p-4">

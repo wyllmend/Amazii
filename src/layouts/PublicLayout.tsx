@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, AlertCircle, Clock, Instagram, Facebook } from 'lucide-react';
+import { Outlet, Link, useLocation, useParams } from 'react-router-dom';
+import { ShoppingCart, AlertCircle, Clock, Instagram, Facebook, Loader2 } from 'lucide-react';
 import { useCartStore } from '@/store/cartStore';
 import { supabaseService } from '@/services/supabaseService';
 import { Toaster } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function PublicLayout() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
+  const baseUrl = tenantSlug ? `/${tenantSlug}` : '';
+  
+  const { restaurantId, setTenant, clearTenant } = useTenantStore();
+  const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantNotFound, setTenantNotFound] = useState(false);
+
   const { settings } = useSettings();
   const cartItems = useCartStore((state) => state.items);
   const itemCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -14,17 +22,66 @@ export default function PublicLayout() {
   const [isStoreOpen, setIsStoreOpen] = useState(true);
 
   useEffect(() => {
-    supabaseService.isStoreOpen().then(setIsStoreOpen).catch(() => {});
+    async function loadTenant() {
+      if (!tenantSlug) {
+        setTenantLoading(false);
+        return;
+      }
+      
+      try {
+        const rest = await supabaseService.getRestaurantBySlug(tenantSlug);
+        if (rest && rest.active) {
+          setTenant(rest.id, tenantSlug);
+          setTenantNotFound(false);
+        } else {
+          clearTenant();
+          setTenantNotFound(true);
+        }
+      } catch (error) {
+        clearTenant();
+        setTenantNotFound(true);
+      } finally {
+        setTenantLoading(false);
+      }
+    }
+    loadTenant();
+  }, [tenantSlug, setTenant, clearTenant]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => {});
 
     const interval = setInterval(() => {
-      supabaseService.isStoreOpen().then(setIsStoreOpen).catch(() => {});
+      supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => {});
     }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [restaurantId]);
 
-  const isCart = location.pathname === '/carrinho';
-  const isCheckout = location.pathname === '/checkout';
-  const isProductPage = location.pathname.startsWith('/produto/');
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-amazii-primary" />
+      </div>
+    );
+  }
+
+  if (tenantNotFound) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="w-10 h-10 text-gray-400" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Restaurante não encontrado</h1>
+        <p className="text-gray-500 max-w-sm">
+          O link que você tentou acessar não existe ou o restaurante está inativo no momento.
+        </p>
+      </div>
+    );
+  }
+
+  const isCart = location.pathname.endsWith('/carrinho');
+  const isCheckout = location.pathname.endsWith('/checkout');
+  const isProductPage = location.pathname.includes('/produto/');
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900 flex flex-col">
@@ -42,7 +99,7 @@ export default function PublicLayout() {
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={baseUrl || '/'} className="flex items-center gap-2">
             {settings?.storeLogo ? (
               <img src={settings.storeLogo} alt={settings.storeName} className="w-9 h-9 object-contain rounded-lg" />
             ) : (
@@ -63,7 +120,7 @@ export default function PublicLayout() {
                 <span>{settings.deliveryTimeMin}-{settings.deliveryTimeMax}m</span>
               </div>
             )}
-            <Link to="/carrinho" className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <Link to={`${baseUrl}/carrinho`} className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
               <ShoppingCart className="w-5 h-5 text-gray-600" />
               {itemCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-amazii-green text-white text-[9px] font-bold flex items-center justify-center rounded-full border-2 border-white min-w-[18px] min-h-[18px]">
@@ -116,7 +173,7 @@ export default function PublicLayout() {
       {!isCart && !isCheckout && !isProductPage && itemCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-lg border-t border-gray-100 shadow-[0_-8px_30px_rgb(0,0,0,0.08)] px-4 py-3 safe-bottom sm:hidden transition-all animate-in slide-in-from-bottom duration-300">
           <Link
-            to="/carrinho"
+            to={`${baseUrl}/carrinho`}
             className="flex items-center justify-between bg-amazii-primary text-white rounded-2xl px-5 py-3 shadow-lg shadow-amazii-primary/20 hover:brightness-110 active:scale-[0.98] transition-all"
           >
             <div className="flex items-center gap-3">

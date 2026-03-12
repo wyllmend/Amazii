@@ -6,6 +6,7 @@ import { supabaseService } from '@/services/supabaseService';
 import { Coupon, CouponType } from '@/services/types';
 import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTenantStore } from '@/store/tenantStore';
 
 const couponSchema = z.object({
   code: z.string().min(3, 'Código deve ter pelo menos 3 caracteres').toUpperCase(),
@@ -18,6 +19,7 @@ const couponSchema = z.object({
 type CouponForm = z.infer<typeof couponSchema>;
 
 export default function AdminCoupons() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,8 +37,9 @@ export default function AdminCoupons() {
   const type = watch('type');
 
   const fetchCoupons = async () => {
+    if (!restaurantId) return;
     try {
-      const data = await supabaseService.getCoupons();
+      const data = await supabaseService.getCoupons(restaurantId);
       setCoupons(data);
     } catch (error) {
       toast.error('Erro ao carregar cupons');
@@ -47,7 +50,7 @@ export default function AdminCoupons() {
 
   useEffect(() => {
     fetchCoupons();
-  }, []);
+  }, [restaurantId]);
 
   const handleOpenModal = (coupon?: Coupon) => {
     if (coupon) {
@@ -75,12 +78,13 @@ export default function AdminCoupons() {
   };
 
   const onSubmit = async (data: CouponForm) => {
+    if (!restaurantId) return;
     try {
       if (editingCoupon) {
         await supabaseService.updateCoupon(editingCoupon.id, data);
         toast.success('Cupom atualizado');
       } else {
-        await supabaseService.createCoupon(data);
+        await supabaseService.createCoupon(data, restaurantId);
         toast.success('Cupom criado');
       }
       handleCloseModal();

@@ -9,11 +9,24 @@ class SupabaseService {
   private orderListeners: Array<(order: Order, event: 'INSERT' | 'UPDATE' | 'DELETE') => void> = [];
   private orderChannel: any = null;
 
+  // --- Tenants ---
+  async getRestaurantBySlug(slug: string): Promise<{ id: string, name: string, active: boolean } | null> {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('id, name, active')
+      .eq('slug', slug)
+      .single();
+    
+    if (error || !data) return null;
+    return data;
+  }
+
   // --- Products ---
-  async getProducts(): Promise<Product[]> {
+  async getProducts(restaurantId: string): Promise<Product[]> {
     const { data, error } = await supabase
       .from('products')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -24,12 +37,15 @@ class SupabaseService {
     }));
   }
 
-  async getProductById(id: string): Promise<Product | undefined> {
-    const { data, error } = await supabase
+  async getProductById(id: string, restaurantId?: string): Promise<Product | undefined> {
+    let query = supabase
       .from('products')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+      
+    if (restaurantId) query = query.eq('restaurant_id', restaurantId);
+    
+    const { data, error } = await query.single();
 
     if (error) return undefined;
     if (!data) return undefined;
@@ -41,7 +57,7 @@ class SupabaseService {
     };
   }
 
-  async createProduct(product: Omit<Product, 'id'>): Promise<Product> {
+  async createProduct(product: Omit<Product, 'id'>, restaurantId: string): Promise<Product> {
     const { data, error } = await supabase
       .from('products')
       .insert({
@@ -53,7 +69,8 @@ class SupabaseService {
         featured: product.featured,
         active: product.active,
         available: product.available,
-        option_groups: product.optionGroups
+        option_groups: product.optionGroups,
+        restaurant_id: restaurantId
       })
       .select()
       .single();
@@ -102,20 +119,21 @@ class SupabaseService {
   }
 
   // --- Categories ---
-  async getCategories(): Promise<Category[]> {
+  async getCategories(restaurantId: string): Promise<Category[]> {
     const { data, error } = await supabase
       .from('categories')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('name');
 
     if (error) throw error;
     return data || [];
   }
 
-  async createCategory(category: Omit<Category, 'id'>): Promise<Category> {
+  async createCategory(category: Omit<Category, 'id'>, restaurantId: string): Promise<Category> {
     const { data, error } = await supabase
       .from('categories')
-      .insert(category)
+      .insert({ ...category, restaurant_id: restaurantId })
       .select()
       .single();
 
@@ -160,28 +178,32 @@ class SupabaseService {
     };
   }
 
-  async getOrders(): Promise<Order[]> {
+  async getOrders(restaurantId: string): Promise<Order[]> {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
     return (data || []).map(o => this.mapOrder(o));
   }
 
-  async getOrderById(id: string): Promise<Order | undefined> {
-    const { data, error } = await supabase
+  async getOrderById(id: string, restaurantId?: string): Promise<Order | undefined> {
+    let query = supabase
       .from('orders')
       .select('*')
-      .eq('id', id)
-      .single();
+      .eq('id', id);
+
+    if (restaurantId) query = query.eq('restaurant_id', restaurantId);
+
+    const { data, error } = await query.single();
 
     if (error) return undefined;
     return this.mapOrder(data);
   }
 
-  async createOrder(orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'status'>, couponCode?: string): Promise<Order> {
+  async createOrder(orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'status'>, restaurantId: string, couponCode?: string): Promise<Order> {
     const normalizedPhone = normalizePhone(orderData.customerPhone);
     const shortId = Math.random().toString(36).substring(2, 10).toUpperCase();
     
@@ -203,7 +225,8 @@ class SupabaseService {
         payment_method: orderData.paymentMethod,
         change_for: orderData.changeFor ?? null,
         delivery_method: orderData.deliveryMethod,
-        customer_ip: orderData.customerIp ?? null
+        customer_ip: orderData.customerIp ?? null,
+        restaurant_id: restaurantId
       })
       .select()
       .single();
@@ -230,15 +253,15 @@ class SupabaseService {
     return this.mapOrder(data);
   }
 
-  subscribeToOrders(callback: (order: Order, event: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
+  subscribeToOrders(restaurantId: string, callback: (order: Order, event: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
     this.orderListeners.push(callback);
 
     if (!this.orderChannel) {
       this.orderChannel = supabase
-        .channel('orders-global')
+        .channel(`orders-${restaurantId}`)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders' },
+          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
           (payload) => {
             console.log('Realtime event received:', payload.eventType, (payload.new as any)?.id);
             const mappedOrder = this.mapOrder(payload.new || payload.old);
@@ -262,10 +285,11 @@ class SupabaseService {
   }
 
   // --- Coupons ---
-  async getCoupons(): Promise<Coupon[]> {
+  async getCoupons(restaurantId: string): Promise<Coupon[]> {
     const { data, error } = await supabase
       .from('coupons')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -279,12 +303,13 @@ class SupabaseService {
     }));
   }
 
-  async validateCoupon(code: string, customerPhone?: string, customerIp?: string): Promise<Coupon | null> {
+  async validateCoupon(code: string, restaurantId: string, customerPhone?: string, customerIp?: string): Promise<Coupon | null> {
     const normalizedPhone = customerPhone ? normalizePhone(customerPhone) : undefined;
     const { data: coupon, error } = await supabase
       .from('coupons')
       .select('*')
       .eq('code', code)
+      .eq('restaurant_id', restaurantId)
       .eq('active', true)
       .single();
 
@@ -329,7 +354,7 @@ class SupabaseService {
     };
   }
 
-  async createCoupon(coupon: Omit<Coupon, 'id' | 'usageCount'>): Promise<Coupon> {
+  async createCoupon(coupon: Omit<Coupon, 'id' | 'usageCount'>, restaurantId: string): Promise<Coupon> {
     const { data, error } = await supabase
       .from('coupons')
       .insert({
@@ -340,7 +365,8 @@ class SupabaseService {
         expiration_date: coupon.expirationDate,
         usage_limit: coupon.usageLimit,
         active: coupon.active,
-        first_purchase_only: coupon.firstPurchaseOnly
+        first_purchase_only: coupon.firstPurchaseOnly,
+        restaurant_id: restaurantId
       })
       .select()
       .single();
@@ -356,13 +382,16 @@ class SupabaseService {
     };
   }
 
-  private async incrementCouponUsage(code: string, customerPhone: string) {
+  private async incrementCouponUsage(code: string, customerPhone: string, restaurantId?: string) {
     const normalizedPhone = normalizePhone(customerPhone);
-    const { data: coupon } = await supabase
+    let query = supabase
       .from('coupons')
-      .select('usage_count, used_by')
-      .eq('code', code)
-      .single();
+      .select('id, usage_count, used_by')
+      .eq('code', code);
+      
+    if (restaurantId) query = query.eq('restaurant_id', restaurantId);
+    
+    const { data: coupon } = await query.single();
     
     if (coupon) {
       await supabase
@@ -371,7 +400,7 @@ class SupabaseService {
           usage_count: (coupon.usage_count || 0) + 1,
           used_by: [...(coupon.used_by || []), normalizedPhone]
         })
-        .eq('code', code);
+        .eq('id', coupon.id);
     }
   }
 
@@ -418,11 +447,11 @@ class SupabaseService {
   }
 
   // --- Settings ---
-  async getSettings(): Promise<StoreSettings> {
+  async getSettings(restaurantId: string): Promise<StoreSettings> {
     const { data, error } = await supabase
       .from('store_settings')
       .select('*')
-      .eq('id', 1)
+      .eq('restaurant_id', restaurantId)
       .single();
 
     if (error) throw error;
@@ -452,11 +481,15 @@ class SupabaseService {
     };
   }
 
-  async updateSettings(settings: StoreSettings): Promise<StoreSettings> {
-    const { data, error } = await supabase
+  async updateSettings(settings: StoreSettings, restaurantId: string): Promise<StoreSettings> {
+    // First find the existing setting id for this restaurant
+    const existing = await supabase
       .from('store_settings')
-      .upsert({
-        id: 1,
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .single();
+      
+    const payload = {
         store_name: settings.storeName,
         store_logo: settings.storeLogo,
         store_address: settings.storeAddress,
@@ -478,10 +511,18 @@ class SupabaseService {
         catalog_title: settings.catalogTitle,
         catalog_subtitle: settings.catalogSubtitle,
         social_links: settings.socialLinks,
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+        updated_at: new Date().toISOString(),
+        restaurant_id: restaurantId
+      };
+
+    let query;
+    if (existing.data?.id) {
+       query = supabase.from('store_settings').update(payload).eq('id', existing.data.id).select().single();
+    } else {
+       query = supabase.from('store_settings').insert(payload).select().single();
+    }
+    
+    const { data, error } = await query;
 
     if (error) {
       console.error('Supabase updateSettings Error:', error);
@@ -522,12 +563,14 @@ class SupabaseService {
     return !!session;
   }
 
-  async loginAdmin(email: string, pass: string): Promise<boolean> {
-    const settings = await this.getSettings();
-    if (email === settings.adminEmail && pass === settings.adminPassword) {
-      localStorage.setItem('amazii_admin_logged', 'true');
-      return true;
-    }
+  async loginAdmin(email: string, pass: string, restaurantId: string): Promise<boolean> {
+    try {
+      const settings = await this.getSettings(restaurantId);
+      if (email === settings.adminEmail && pass === settings.adminPassword) {
+        localStorage.setItem('amazii_admin_logged', 'true');
+        return true;
+      }
+    } catch (e) {}
     return false;
   }
 
@@ -541,17 +584,17 @@ class SupabaseService {
   }
 
   // --- Helpers ---
-  async getDeliveryFee(neighborhood: string): Promise<number> {
-    const settings = await this.getSettings();
+  async getDeliveryFee(neighborhood: string, restaurantId: string): Promise<number> {
+    const settings = await this.getSettings(restaurantId);
     const rule = settings.deliveryFeesByNeighborhood?.find(
       r => r.neighborhood.toLowerCase() === neighborhood.toLowerCase()
     );
     return rule ? rule.fee : settings.deliveryFeeBase;
   }
 
-  async isStoreOpen(): Promise<boolean> {
+  async isStoreOpen(restaurantId: string): Promise<boolean> {
     try {
-      const settings = await this.getSettings();
+      const settings = await this.getSettings(restaurantId);
       if (!settings || !settings.openingHours) return false;
       if (settings.emergencyClosed) return false;
 

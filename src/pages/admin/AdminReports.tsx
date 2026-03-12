@@ -4,14 +4,14 @@ import { Order, OrderStatus } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { 
   BarChart3, Calendar, Filter, Download, DollarSign, 
-  ShoppingBag, TrendingUp, CreditCard, Package,
-  Printer, Bell, ShoppingCart, CheckSquare, Clock, Bike, ThumbsUp, Trash2
+  ShoppingBag, TrendingUp, CreditCard, Package, Archive, Eraser
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
+import { useTenantStore } from '@/store/tenantStore';
 
 const STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
   'finalizado': 'Finalizado',
@@ -21,8 +21,10 @@ const STATUS_LABELS: Partial<Record<OrderStatus, string>> = {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
 
 export default function AdminReports() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [archiving, setArchiving] = useState(false);
   
   // Filters
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'all'>('month');
@@ -31,17 +33,55 @@ export default function AdminReports() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [restaurantId]);
 
   const fetchData = async () => {
+    if (!restaurantId) return;
     setLoading(true);
     try {
-      const data = await supabaseService.getOrders();
+      const data = await supabaseService.getOrders(restaurantId);
       setOrders(data);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Export visible orders to CSV */
+  const handleExportCSV = () => {
+    if (filteredOrders.length === 0) { toast.info('Nenhum dado para exportar'); return; }
+    const headers = ['ID', 'Data', 'Cliente', 'Telefone', 'Status', 'Pagamento', 'Total'];
+    const rows = filteredOrders.map(o => [
+      '#' + o.id.slice(0, 8),
+      new Date(o.createdAt).toLocaleString('pt-BR'),
+      o.customerName,
+      o.customerPhone,
+      o.status,
+      o.paymentMethod === 'credit_card' ? 'Cartão' : o.paymentMethod,
+      o.total.toFixed(2).replace('.', ','),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `relatorio_${dateRange}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV exportado!');
+  };
+
+  /** Archive all visible finalizado/cancelado orders (>90 days or all) */
+  const handleArchive = async () => {
+    setArchiving(true);
+    try {
+      const { superAdminService } = await import('@/services/superAdminService');
+      const count = await superAdminService.archiveOldOrders();
+      toast.success(count > 0 ? `${count} pedidos arquivados!` : 'Nenhum pedido elegível para arquivamento (>90 dias)');
+      fetchData();
+    } catch {
+      toast.error('Erro ao arquivar');
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -162,7 +202,24 @@ export default function AdminReports() {
           <h1 className="text-2xl font-bold text-gray-900">Relatórios e Análises</h1>
           <p className="text-gray-500 text-sm">Acompanhe o desempenho da sua loja</p>
         </div>
-        
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-amazii-primary/40 hover:text-amazii-primary transition-colors shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Exportar CSV
+          </button>
+          <button
+            onClick={handleArchive}
+            disabled={archiving}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-red-200 hover:text-red-500 transition-colors shadow-sm disabled:opacity-50"
+            title="Arquiva pedidos finalizados/cancelados com mais de 90 dias"
+          >
+            <Archive className="w-4 h-4" />
+            {archiving ? 'Arquivando...' : 'Arquivar antigos'}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

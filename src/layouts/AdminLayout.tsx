@@ -1,15 +1,22 @@
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Package, ShoppingBag, Settings, LogOut, 
-  Menu, X, Tag, Users, MessageCircle, BarChart3
+  Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { supabaseService } from '@/services/supabaseService';
 import { toast, Toaster } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
+import { useTenantStore } from '@/store/tenantStore';
+import { useParams } from 'react-router-dom';
 
 export default function AdminLayout() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
+  const { restaurantId, setTenant, clearTenant } = useTenantStore();
+  const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantError, setTenantError] = useState(false);
+
   const { settings } = useSettings();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
@@ -34,6 +41,33 @@ export default function AdminLayout() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Tenant Resolution
+  useEffect(() => {
+    async function resolveTenant() {
+      if (!tenantSlug) {
+        setTenantLoading(false);
+        setTenantError(true);
+        return;
+      }
+      try {
+        const rest = await supabaseService.getRestaurantBySlug(tenantSlug);
+        if (rest && rest.active) {
+          setTenant(rest.id, tenantSlug);
+          setTenantError(false);
+        } else {
+          clearTenant();
+          setTenantError(true);
+        }
+      } catch (err) {
+        clearTenant();
+        setTenantError(true);
+      } finally {
+        setTenantLoading(false);
+      }
+    }
+    resolveTenant();
+  }, [tenantSlug, setTenant, clearTenant]);
 
   // Real-time Order Notifications & Audio Unlock
   useEffect(() => {
@@ -71,10 +105,11 @@ export default function AdminLayout() {
       window.removeEventListener('touchstart', unlockAudio);
     };
 
-    window.addEventListener('click', unlockAudio);
     window.addEventListener('touchstart', unlockAudio);
     
-    const subscription = supabaseService.subscribeToOrders((order, event) => {
+    if (!restaurantId) return;
+
+    const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
       if (event === 'INSERT') {
         const isEnabled = localStorage.getItem('admin_notifications_enabled') !== 'false';
         if (!isEnabled) return;
@@ -100,7 +135,7 @@ export default function AdminLayout() {
             notification.onclick = (e) => {
               e.preventDefault();
               window.focus();
-              navigate('/admin/pedidos');
+              navigate(`/admin/${tenantSlug}/pedidos`);
             };
           } catch (e) {
             console.error('Browser notification error:', e);
@@ -113,39 +148,60 @@ export default function AdminLayout() {
           duration: 15000,
           action: {
             label: 'Ver Pedido',
-            onClick: () => navigate('/admin/pedidos')
+            onClick: () => navigate(`/admin/${tenantSlug}/pedidos`)
           },
         });
       }
     });
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
       window.removeEventListener('admin-notifications-toggle', handleToggle);
       window.removeEventListener('click', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
     };
-  }, [navigate, notificationsEnabled]);
+  }, [navigate, notificationsEnabled, restaurantId, tenantSlug]);
+
+  if (tenantLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-amazii-primary rounded-full border-t-transparent animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (tenantError || !restaurantId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center px-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Painel não encontrado</h1>
+          <p className="text-gray-500">O painel administrativo deste restaurante não está disponível.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
-    return <Navigate to="/admin/login" replace />;
+    return <Navigate to={`/admin/${tenantSlug}/login`} replace />;
   }
 
   const handleLogout = () => {
     supabaseService.logoutAdmin();
-    navigate('/admin/login');
+    navigate(`/admin/${tenantSlug}/login`);
   };
 
   const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
-    { icon: Package, label: 'Produtos', path: '/admin/produtos' },
-    { icon: Tag, label: 'Categorias', path: '/admin/categorias' },
-    { icon: ShoppingBag, label: 'Pedidos', path: '/admin/pedidos' },
-    { icon: BarChart3, label: 'Relatórios', path: '/admin/relatorios' },
-    { icon: Tag, label: 'Cupons', path: '/admin/cupons' },
-    { icon: Users, label: 'Leads / CRM', path: '/admin/leads' },
-    { icon: MessageCircle, label: 'WhatsApp', path: '/admin/whatsapp' },
-    { icon: Settings, label: 'Configurações', path: '/admin/configuracoes' },
+    { icon: LayoutDashboard, label: 'Dashboard', path: `/admin/${tenantSlug}/dashboard` },
+    { icon: Package, label: 'Produtos', path: `/admin/${tenantSlug}/produtos` },
+    { icon: Tag, label: 'Categorias', path: `/admin/${tenantSlug}/categorias` },
+    { icon: ShoppingBag, label: 'Pedidos', path: `/admin/${tenantSlug}/pedidos` },
+    { icon: BarChart3, label: 'Relatórios', path: `/admin/${tenantSlug}/relatorios` },
+    { icon: Tag, label: 'Cupons', path: `/admin/${tenantSlug}/cupons` },
+    { icon: Users, label: 'Leads / CRM', path: `/admin/${tenantSlug}/leads` },
+    { icon: MessageCircle, label: 'WhatsApp', path: `/admin/${tenantSlug}/whatsapp` },
+    { icon: Settings, label: 'Configurações', path: `/admin/${tenantSlug}/configuracoes` },
   ];
 
   return (

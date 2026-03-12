@@ -6,6 +6,7 @@ import { useCartStore } from '@/store/cartStore';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Loader2, ArrowLeft, Plus, Minus, ShoppingCart, MessageCircle, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function ProductPage() {
   const { id } = useParams();
@@ -15,14 +16,16 @@ export default function ProductPage() {
   const [quantity, setQuantity] = useState(1);
   const [selectedOptions, setSelectedOptions] = useState<Record<string, { option: ProductOption; quantity: number }[]>>({});
   const [settings, setSettings] = useState<any>(null);
+  
+  const restaurantId = useTenantStore((state) => state.restaurantId);
 
   const addItem = useCartStore((state) => state.addItem);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !restaurantId) return;
     Promise.all([
-      supabaseService.getProductById(id),
-      supabaseService.getSettings()
+      supabaseService.getProductById(id, restaurantId),
+      supabaseService.getSettings(restaurantId)
     ])
       .then(([prodData, settingsData]) => {
         if (prodData) {
@@ -35,7 +38,7 @@ export default function ProductPage() {
       })
       .catch(() => toast.error('Erro ao carregar produto'))
       .finally(() => setLoading(false));
-  }, [id, navigate]);
+  }, [id, restaurantId, navigate]);
 
   const handleOptionQuantity = (groupId: string, option: ProductOption, delta: number, isMulti: boolean) => {
     setSelectedOptions(prev => {

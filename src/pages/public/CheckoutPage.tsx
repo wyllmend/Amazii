@@ -10,6 +10,7 @@ import { formatCurrency, normalizePhone } from '@/lib/utils';
 import { Loader2, CreditCard, QrCode, User, CheckCircle, Store, Bike, Banknote } from 'lucide-react';
 import { toast } from 'sonner';
 import { StoreSettings } from '@/services/types';
+import { useTenantStore } from '@/store/tenantStore';
 
 const checkoutSchema = z.object({
   name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -32,6 +33,8 @@ export default function CheckoutPage() {
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [settingsError, setSettingsError] = useState(false);
   const [customerIp, setCustomerIp] = useState<string>('');
+  
+  const restaurantId = useTenantStore((state) => state.restaurantId);
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -95,8 +98,9 @@ export default function CheckoutPage() {
   };
 
   useEffect(() => {
+    if (!restaurantId) return;
     setSettingsLoading(true);
-    supabaseService.getSettings()
+    supabaseService.getSettings(restaurantId)
       .then(s => {
         setSettings(s);
         setSettingsError(false);
@@ -194,7 +198,12 @@ export default function CheckoutPage() {
         return;
       }
 
-      const isStoreOpen = await supabaseService.isStoreOpen().catch(() => true);
+      if (!restaurantId) {
+        toast.error('Restaurante não encontrado. Tente recarregar a página.');
+        return;
+      }
+
+      const isStoreOpen = await supabaseService.isStoreOpen(restaurantId).catch(() => true);
       if (!isStoreOpen) {
         toast.error('A loja está fechada no momento. Tente mais tarde.');
         return;
@@ -203,7 +212,7 @@ export default function CheckoutPage() {
       const normalizedPhone = normalizePhone(data.phone);
 
       if (coupon) {
-        const validCoupon = await supabaseService.validateCoupon(coupon.code, normalizedPhone, customerIp).catch(() => null);
+        const validCoupon = await supabaseService.validateCoupon(coupon.code, restaurantId, normalizedPhone, customerIp).catch(() => null);
         if (!validCoupon) {
           toast.error('Este cupom é válido apenas para a primeira compra ou já foi utilizado.');
           return;
@@ -232,7 +241,7 @@ export default function CheckoutPage() {
         changeFor: data.paymentMethod === 'dinheiro' ? changeForValue : undefined,
         deliveryMethod: data.deliveryMethod,
         customerIp: customerIp || undefined,
-      }, coupon?.code);
+      }, restaurantId, coupon?.code);
 
       try {
         localStorage.setItem('amazii_customer_name', data.name);

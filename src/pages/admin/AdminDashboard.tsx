@@ -8,23 +8,27 @@ import {
 } from 'recharts';
 import { DollarSign, ShoppingBag, Users, TrendingUp, Loader2, Bell } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function AdminDashboard() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
+    if (!restaurantId) return;
     setLoading(true);
-    const data = await supabaseService.getOrders();
+    const data = await supabaseService.getOrders(restaurantId);
     setOrders(data);
     setLoading(false);
   };
 
   useEffect(() => {
+    if (!restaurantId) return;
     fetchData();
 
     // Subscribe to real-time changes
-    const subscription = supabaseService.subscribeToOrders((order, event) => {
+    const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
       if (event === 'INSERT') {
         setOrders(prev => {
           if (prev.some(o => o.id === order.id)) return prev;
@@ -38,9 +42,11 @@ export default function AdminDashboard() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
     };
-  }, []);
+  }, [restaurantId]);
 
 
   if (loading) {

@@ -6,7 +6,9 @@ import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Loader2, CheckCircle, Clock, Package, Truck, XCircle, MapPin, Store, Phone, CreditCard, ArrowRight } from 'lucide-react';
 
 export default function OrderPage() {
-  const { id } = useParams();
+  const { id, tenantSlug } = useParams<{ id?: string, tenantSlug?: string }>();
+  const baseUrl = tenantSlug ? `/${tenantSlug}` : '/';
+
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +41,7 @@ export default function OrderPage() {
     return (
       <div className="text-center py-20 px-4">
         <h2 className="text-xl font-bold text-gray-900 mb-3">Pedido não encontrado</h2>
-        <Link to="/" className="text-amazii-primary font-medium">Voltar à loja →</Link>
+        <Link to={baseUrl} className="text-amazii-primary font-medium">Voltar à loja →</Link>
       </div>
     );
   }
@@ -214,7 +216,7 @@ export default function OrderPage() {
       {/* CTA */}
       <div className="text-center pt-2">
         <Link
-          to="/"
+          to={baseUrl}
           className="inline-flex items-center gap-2 bg-amazii-primary text-white font-bold px-8 py-4 rounded-2xl shadow-lg shadow-amazii-primary/20 transition-all active:scale-[0.98]"
         >
           Fazer outro pedido

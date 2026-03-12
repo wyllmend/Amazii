@@ -4,10 +4,19 @@ import { Order, OrderStatus, StoreSettings } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { 
   Search, MessageCircle, Phone, MapPin, User, Store, 
-  Printer, Bell, ShoppingCart, CheckSquare, Clock, Bike, ThumbsUp, Trash2
+  Printer, Bell, ShoppingCart, CheckSquare, Clock, Bike, ThumbsUp, Trash2,
+  History, Eraser
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { whatsappService } from '@/services/whatsappService';
+import { Link } from 'react-router-dom';
+import { useTenantStore } from '@/store/tenantStore';
+
+// Active statuses shown in the main orders panel
+const ACTIVE_STATUSES: OrderStatus[] = [
+  'aguardando_pagamento', 'pago', 'aceito', 'em_preparo',
+  'saiu_entrega', 'pronto_retirada'
+];
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   'aguardando_pagamento': 'Novo (Não Pago)',
@@ -32,21 +41,24 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 };
 
 export default function AdminOrders() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
     localStorage.getItem('admin_notifications_enabled') !== 'false'
   );
 
   useEffect(() => {
+    if (!restaurantId) return;
     fetchOrders();
-    supabaseService.getSettings().then(setSettings);
+    supabaseService.getSettings(restaurantId).then(setSettings);
     
     // Subscribe to real-time changes
-    const subscription = supabaseService.subscribeToOrders((order, event) => {
+    const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
       if (event === 'INSERT') {
         setOrders(prev => {
           const exists = prev.some(o => o.id === order.id);
@@ -61,18 +73,20 @@ export default function AdminOrders() {
     });
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
     };
-  }, []);
+  }, [restaurantId]);
 
   const fetchOrders = async () => {
+    if (!restaurantId) return;
     try {
-      const data = await supabaseService.getOrders();
-      // Sort by date desc
-      const sorted = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const data = await supabaseService.getOrders(restaurantId);
+      const sorted = data
+        .filter(o => ACTIVE_STATUSES.includes(o.status))  // only active orders
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setOrders(sorted);
-      
-      // Select first order if none selected
       if (!selectedOrder && sorted.length > 0) {
         setSelectedOrder(sorted[0]);
       }
@@ -121,18 +135,35 @@ export default function AdminOrders() {
   const handleStatusUpdate = async (id: string, newStatus: OrderStatus) => {
     try {
       const updatedOrder = await supabaseService.updateOrderStatus(id, newStatus);
-      setOrders(orders.map(o => o.id === id ? updatedOrder : o));
-      if (selectedOrder?.id === id) {
-        setSelectedOrder(updatedOrder);
+      
+      // If finalizado/cancelado → remove from active panel
+      if (newStatus === 'finalizado' || newStatus === 'cancelado') {
+        setOrders(prev => prev.filter(o => o.id !== id));
+        setSelectedOrder(null);
+        toast.success(`Pedido ${newStatus === 'finalizado' ? 'finalizado' : 'cancelado'} — movido para o Histórico`);
+      } else {
+        setOrders(prev => prev.map(o => o.id === id ? updatedOrder : o));
+        if (selectedOrder?.id === id) setSelectedOrder(updatedOrder);
+        toast.success(`Status atualizado para ${STATUS_LABELS[newStatus]}`);
       }
-      
-      // Send WhatsApp notification
+
       sendStatusNotification(updatedOrder, newStatus);
-      
-      toast.success(`Status atualizado para ${STATUS_LABELS[newStatus]}`);
     } catch (error) {
       toast.error('Erro ao atualizar status');
     }
+  };
+
+  // Limpar: dismiss ALL currently visible orders from view (session-only)
+  const handleLimpar = () => {
+    const visibleIds = new Set(orders.map(o => o.id));
+    setDismissedIds(prev => new Set([...prev, ...visibleIds]));
+    setSelectedOrder(null);
+    toast.success('Painel limpo! Novos pedidos continuarão aparecendo.');
+  };
+
+  const handleRestoreAll = () => {
+    setDismissedIds(new Set());
+    toast.info('Pedidos restaurados');
   };
 
   const toggleNotifications = () => {
@@ -150,10 +181,13 @@ export default function AdminOrders() {
   };
 
 
-  const filteredOrders = orders.filter(order => 
-    order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    order.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter: active statuses + not dismissed + search term
+  const filteredOrders = orders
+    .filter(o => !dismissedIds.has(o.id))
+    .filter(order => 
+      order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.id.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const getPaymentMethodLabel = (order: Order) => {
     if (order.paymentMethod === 'credit_card') return 'Cartão de Crédito';
@@ -171,15 +205,35 @@ export default function AdminOrders() {
     <div className="h-[calc(100vh-100px)] flex flex-col md:flex-row gap-6 pb-4">
       {/* Left Column: Order List */}
       <div className="w-full md:w-1/3 lg:w-1/4 flex flex-col gap-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Filtre por nome, número do pedido..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amazii-primary/20 shadow-sm"
-          />
+          <div className="flex items-center gap-2 mb-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Filtre por nome, número do pedido..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amazii-primary/20 shadow-sm"
+            />
+          </div>
+          <button
+            onClick={dismissedIds.size > 0 ? handleRestoreAll : handleLimpar}
+            title={dismissedIds.size > 0 ? 'Mostrar todos' : 'Limpar painel'}
+            className={`p-3 rounded-lg border bg-white transition-colors shadow-sm flex-shrink-0 ${
+              dismissedIds.size > 0
+                ? 'border-purple-200 text-amazii-primary hover:bg-purple-50'
+                : 'border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200'
+            }`}
+          >
+            {dismissedIds.size > 0 ? <History className="w-4 h-4" /> : <Eraser className="w-4 h-4" />}
+          </button>
+          <Link
+            to="/admin/historico-pedidos"
+            title="Ver histórico completo"
+            className="p-3 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-amazii-primary hover:border-purple-200 transition-colors shadow-sm flex-shrink-0"
+          >
+            <History className="w-4 h-4" />
+          </Link>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-2">

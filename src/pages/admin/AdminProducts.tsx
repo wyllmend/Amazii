@@ -7,6 +7,7 @@ import { Product, Category, ProductOptionGroup } from '@/services/types';
 import { formatCurrency } from '@/lib/utils';
 import { Plus, Edit, Trash2, Search, Loader2, X, Image as ImageIcon, Layers } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTenantStore } from '@/store/tenantStore';
 import ProductOptionManager from '@/components/admin/ProductOptionManager';
 
 const optionSchema = z.object({
@@ -89,6 +90,7 @@ const FileInput = ({ label, onChange, value }: { label: string, onChange: (url: 
 type ProductForm = z.infer<typeof productSchema>;
 
 export default function AdminProducts() {
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,13 +109,14 @@ export default function AdminProducts() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [restaurantId]);
 
   const fetchData = async () => {
+    if (!restaurantId) return;
     try {
       const [prods, cats] = await Promise.all([
-        supabaseService.getProducts(),
-        supabaseService.getCategories(),
+        supabaseService.getProducts(restaurantId),
+        supabaseService.getCategories(restaurantId),
       ]);
       setProducts(prods);
       setCategories(cats);
@@ -125,6 +128,7 @@ export default function AdminProducts() {
   };
 
   const onSubmit = async (data: ProductForm) => {
+    if (!restaurantId) return;
     try {
       const productData = {
         name: data.name,
@@ -142,7 +146,7 @@ export default function AdminProducts() {
         await supabaseService.updateProduct(editingProduct.id, productData);
         toast.success('Produto atualizado com sucesso');
       } else {
-        await supabaseService.createProduct(productData);
+        await supabaseService.createProduct(productData, restaurantId);
         toast.success('Produto criado com sucesso');
       }
       

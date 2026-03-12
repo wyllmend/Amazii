@@ -231,7 +231,6 @@ export const whatsappService = {
 
   async findMessages(remoteJid: string) {
     try {
-      const number = remoteJid.split('@')[0];
       const response = await fetch(`${API_URL}/chat/findMessages/${INSTANCE}`, {
         method: 'POST',
         headers: {
@@ -239,7 +238,11 @@ export const whatsappService = {
           'apikey': API_KEY,
           'accept': '*/*'
         },
-        body: JSON.stringify({ number, count: 50 })
+        // Evolution API v2: filter by remoteJid so we get messages for THIS contact only
+        body: JSON.stringify({
+          where: { key: { remoteJid } },
+          limit: 50
+        })
       });
 
       if (!response.ok) {

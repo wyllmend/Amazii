@@ -6,9 +6,11 @@ import { formatCurrency } from '@/lib/utils';
 import { Trash2, Plus, Minus, ArrowRight, ShoppingCart, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
+import { useTenantStore } from '@/store/tenantStore';
 
 export default function CartPage() {
   const navigate = useNavigate();
+  const restaurantId = useTenantStore((state) => state.restaurantId);
   const { items, removeItem, updateQuantity, coupon, applyCoupon, subtotal, total } = useCartStore();
   const [couponCode, setCouponCode] = useState('');
   const [loadingCoupon, setLoadingCoupon] = useState(false);
@@ -16,7 +18,8 @@ export default function CartPage() {
   const [customerIp, setCustomerIp] = useState('');
 
   useEffect(() => {
-    supabaseService.getSettings()
+    if (!restaurantId) return;
+    supabaseService.getSettings(restaurantId)
       .then(s => setSettings(s))
       .catch(() => {});
     fetch('https://api.ipify.org?format=json')
@@ -27,10 +30,10 @@ export default function CartPage() {
 
   const handleApplyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
-    if (!code) return;
+    if (!code || !restaurantId) return;
     setLoadingCoupon(true);
     try {
-      const validCoupon = await supabaseService.validateCoupon(code, undefined, customerIp);
+      const validCoupon = await supabaseService.validateCoupon(code, restaurantId, undefined, customerIp);
       if (validCoupon) {
         applyCoupon(validCoupon);
         toast.success('Cupom aplicado!');

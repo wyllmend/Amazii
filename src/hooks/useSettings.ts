@@ -1,30 +1,38 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabaseService } from '@/services/supabaseService';
 import { StoreSettings } from '@/services/types';
+import { useTenantStore } from '@/store/tenantStore';
 
-let cachedSettings: StoreSettings | null = null;
+const cachedSettings: Record<string, StoreSettings> = {};
 
 export function useSettings() {
-  const [settings, setSettings] = useState<StoreSettings | null>(cachedSettings);
-  const [loading, setLoading] = useState(!cachedSettings);
+  const restaurantId = useTenantStore((state) => state.restaurantId);
+  const [settings, setSettings] = useState<StoreSettings | null>(restaurantId ? cachedSettings[restaurantId] || null : null);
+  const [loading, setLoading] = useState(restaurantId ? !cachedSettings[restaurantId] : true);
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
+    if (!restaurantId) return null;
     try {
-      const data = await supabaseService.getSettings();
-      cachedSettings = data;
+      const data = await supabaseService.getSettings(restaurantId);
+      cachedSettings[restaurantId] = data;
       setSettings(data);
       return data;
     } catch (err) {
       console.error('Error refreshing settings:', err);
       throw err;
     }
-  };
+  }, [restaurantId]);
 
   useEffect(() => {
-    if (!cachedSettings) {
+    if (!restaurantId) return;
+    if (!cachedSettings[restaurantId]) {
+      setLoading(true);
       refreshSettings().finally(() => setLoading(false));
+    } else {
+      setSettings(cachedSettings[restaurantId]);
+      setLoading(false);
     }
-  }, []);
+  }, [restaurantId, refreshSettings]);
 
   useEffect(() => {
     if (!settings) return;
