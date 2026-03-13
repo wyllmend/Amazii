@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Search, MessageCircle, DollarSign, ShoppingBag, Heart, Loader2, Send, CheckCircle2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTenantStore } from '@/store/tenantStore';
+import { useParams } from 'react-router-dom';
 
 type Lead = {
   customerName: string;
@@ -49,6 +50,7 @@ function markPhoneAsBlasted(phones: string[]) {
 type BlastState = 'idle' | 'running' | 'done';
 
 export default function AdminLeads() {
+  const { tenantSlug = 'default' } = useParams<{ tenantSlug: string }>();
   const restaurantId = useTenantStore((state) => state.restaurantId);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +138,7 @@ export default function AdminLeads() {
 
       setBlastProgress(p => ({ ...p, current: lead.customerName }));
       try {
-        await whatsappService.sendMessage(lead.customerPhone, buildMessage(lead.customerName));
+        await whatsappService.sendMessage(tenantSlug, lead.customerPhone, buildMessage(lead.customerName));
         sent++;
         sentPhones.push(lead.customerPhone.replace(/\D/g, ''));
         setBlastProgress(p => ({ ...p, sent }));

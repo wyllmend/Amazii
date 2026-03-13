@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -27,6 +27,7 @@ type CheckoutForm = z.infer<typeof checkoutSchema>;
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const { items, subtotal, coupon, clearCart } = useCartStore();
   const [loading, setLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -116,7 +117,7 @@ export default function CheckoutPage() {
       .then(res => res.json())
       .then(data => setCustomerIp(data?.ip || ''))
       .catch(() => {}); // silently ignore
-  }, []);
+  }, [restaurantId]);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<CheckoutForm>({
     resolver: zodResolver(checkoutSchema),
@@ -212,9 +213,9 @@ export default function CheckoutPage() {
       const normalizedPhone = normalizePhone(data.phone);
 
       if (coupon) {
-        const validCoupon = await supabaseService.validateCoupon(coupon.code, restaurantId, normalizedPhone, customerIp).catch(() => null);
-        if (!validCoupon) {
-          toast.error('Este cupom é válido apenas para a primeira compra ou já foi utilizado.');
+        const result = await supabaseService.validateCoupon(coupon.code, restaurantId, normalizedPhone, customerIp).catch(() => ({ coupon: null, error: 'Erro de conexão' }));
+        if (!result || !result.coupon) {
+          toast.error(result?.error || 'Cupom inválido');
           return;
         }
       }
@@ -255,12 +256,12 @@ export default function CheckoutPage() {
       try {
         const storeName = settings?.storeName || 'nossa loja';
         const msg = buildConfirmationMessage(order, storeName);
-        whatsappService.sendMessage(normalizedPhone, msg);
+        whatsappService.sendMessage(tenantSlug || 'default', normalizedPhone, msg);
       } catch (err) {
         console.warn('WhatsApp confirmation skipped:', err);
       }
 
-      navigate(`/pedido/${order.id}`);
+      navigate(`/${tenantSlug}/pedido/${order.id}`);
     } catch (error) {
       console.error('Order error:', error);
       toast.error('Erro ao processar pedido. Tente novamente.');
@@ -270,7 +271,7 @@ export default function CheckoutPage() {
   };
 
   if (items.length === 0) {
-    navigate('/carrinho');
+    navigate(tenantSlug ? `/${tenantSlug}/carrinho` : '/carrinho');
     return null;
   }
 

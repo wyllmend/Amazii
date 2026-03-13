@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const EVO_URL = import.meta.env.VITE_WHATSAPP_API_URL as string;
+const EVO_KEY = import.meta.env.VITE_WHATSAPP_API_KEY as string;
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 type Restaurant = {
   id: string;
@@ -18,15 +21,22 @@ type Restaurant = {
   // extras (joined)
   orderCount?: number;
   customerCount?: number;
+  adminEmail?: string;
+  adminPassword?: string;
 };
 
 type FormData = {
   name: string;
   slug: string;
   active: boolean;
+  adminEmail: string;
+  adminPassword: string;
 };
 
-const EMPTY_FORM: FormData = { name: '', slug: '', active: true };
+const EMPTY_FORM: FormData = { 
+  name: '', slug: '', active: true, 
+  adminEmail: '', adminPassword: '' 
+};
 
 const cn = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -73,31 +83,59 @@ function RestaurantForm({
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-semibold text-gray-400 mb-1.5">Nome do Restaurante *</label>
-        <input
-          value={form.name}
-          onChange={e => { set('name', e.target.value); if (!initial.name) set('slug', toSlug(e.target.value)); }}
-          placeholder="Ex: Açaí do Bom"
-          className="w-full px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-gray-400 mb-1.5">Slug (URL)</label>
-        <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="block text-xs font-semibold text-gray-400 mb-1.5">Nome do Restaurante *</label>
           <input
-            value={form.slug}
-            onChange={e => set('slug', toSlug(e.target.value))}
-            placeholder="acai-do-bom"
-            className="flex-1 px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600 font-mono"
+            value={form.name}
+            onChange={e => { set('name', e.target.value); if (!initial.name) set('slug', toSlug(e.target.value)); }}
+            placeholder="Ex: Açaí do Bom"
+            className="w-full px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600"
           />
-          <button
-            type="button"
-            onClick={() => set('slug', toSlug(form.name))}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-xs text-gray-300 transition-colors"
-          >Auto</button>
         </div>
-        <p className="text-[10px] text-gray-500 mt-1">amazii.app/<span className="text-purple-400">{form.slug || 'slug'}</span></p>
+        <div className="col-span-2">
+          <label className="block text-xs font-semibold text-gray-400 mb-1.5">Slug (URL)</label>
+          <div className="flex gap-2">
+            <input
+              value={form.slug}
+              onChange={e => set('slug', toSlug(e.target.value))}
+              placeholder="acai-do-bom"
+              className="flex-1 px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => set('slug', toSlug(form.name))}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-xs text-gray-300 transition-colors"
+            >Auto</button>
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">amazii.app/<span className="text-purple-400">{form.slug || 'slug'}</span></p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-800">
+        <div className="col-span-2">
+          <p className="text-xs font-bold text-gray-300 mb-3">Credenciais de Acesso (Dono da Loja)</p>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-400 mb-1.5">Email de Login</label>
+          <input
+            type="email"
+            value={form.adminEmail}
+            onChange={e => set('adminEmail', e.target.value)}
+            placeholder="admin@loja.com"
+            className="w-full px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-400 mb-1.5">Senha</label>
+          <input
+            type="text"
+            value={form.adminPassword}
+            onChange={e => set('adminPassword', e.target.value)}
+            placeholder="Min. 6 caracteres"
+            className="w-full px-3.5 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-600"
+          />
+        </div>
       </div>
       <div className="flex items-center justify-between p-3.5 bg-gray-800/50 rounded-xl border border-gray-700/50">
         <div>
@@ -172,14 +210,21 @@ export default function SuperAdminRestaurants() {
         updated_at: r.updated_at,
       }));
 
-      // Load order count per restaurant in parallel
+      // Load order count and credentials per restaurant in parallel
       const enriched = await Promise.all(list.map(async r => {
-        const [o, c] = await Promise.all([
+        const [o, c, settings] = await Promise.all([
           supabase.from('orders').select('id', { count: 'exact', head: true }).eq('restaurant_id', r.id),
           supabase.from('orders').select('customer_phone', { count: 'exact', head: false }).eq('restaurant_id', r.id),
+          supabase.from('store_settings').select('admin_email, admin_password').eq('restaurant_id', r.id).maybeSingle()
         ]);
         const phones = new Set((c.data || []).map((x: any) => x.customer_phone));
-        return { ...r, orderCount: o.count ?? 0, customerCount: phones.size };
+        return { 
+          ...r, 
+          orderCount: o.count ?? 0, 
+          customerCount: phones.size,
+          adminEmail: settings.data?.admin_email || '',
+          adminPassword: settings.data?.admin_password || ''
+        };
       }));
 
       setRestaurants(enriched);
@@ -196,6 +241,8 @@ export default function SuperAdminRestaurants() {
   const handleSave = async (form: FormData) => {
     setSaveLoading(true);
     try {
+      let restId = editTarget?.id;
+
       if (editTarget) {
         const { error } = await supabase
           .from('restaurants')
@@ -204,10 +251,11 @@ export default function SuperAdminRestaurants() {
         if (error) throw error;
         toast.success('Restaurante atualizado!');
       } else {
+        restId = crypto.randomUUID();
         const { error } = await supabase
           .from('restaurants')
           .insert({
-            id: crypto.randomUUID(),
+            id: restId,
             name: form.name,
             slug: form.slug,
             active: form.active,
@@ -217,10 +265,41 @@ export default function SuperAdminRestaurants() {
         if (error) throw error;
         toast.success('Restaurante criado!');
       }
+
+      // Upsert Credentials in store_settings
+      if (restId && (form.adminEmail || form.adminPassword)) {
+        const { data: existingSettings } = await supabase
+          .from('store_settings')
+          .select('id')
+          .eq('restaurant_id', restId)
+          .maybeSingle();
+
+        if (existingSettings?.id) {
+          const { error: settingsError } = await supabase.from('store_settings').update({
+            admin_email: form.adminEmail,
+            admin_password: form.adminPassword
+          }).eq('id', existingSettings.id);
+          
+          if (settingsError) throw settingsError;
+        } else {
+          // Note: If no settings exist yet, we create an initial configuration 
+          // just to store the credentials. The other fields will get their default DB values.
+          const { error: insertError } = await supabase.from('store_settings').insert({
+            restaurant_id: restId,
+            admin_email: form.adminEmail,
+            admin_password: form.adminPassword,
+            store_name: form.name
+          });
+          
+          if (insertError) throw insertError;
+        }
+      }
+
       setShowModal(false);
       setEditTarget(null);
       fetchRestaurants();
     } catch (err: any) {
+      console.error("Super Admin Save Error:", err);
       toast.error(err.message || 'Erro ao salvar');
     } finally {
       setSaveLoading(false);
@@ -245,18 +324,68 @@ export default function SuperAdminRestaurants() {
     }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────────
+  // ── Delete ──────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from('restaurants').delete().eq('id', deleteTarget.id);
+      const restId = deleteTarget.id;
+
+      // 1. Fetch the store settings to find the WhatsApp instance name
+      const { data: settings } = await supabase
+        .from('store_settings')
+        .select('instance_id')
+        .eq('restaurant_id', restId)
+        .maybeSingle();
+
+      // 2. Delete WhatsApp instance from Evolution API if one exists
+      // Must logout first to disconnect the session, THEN delete — otherwise a connected
+      // instance session may be restored on re-connect.
+      if (settings?.instance_id && EVO_URL && EVO_KEY) {
+        try {
+          // Step A: Logout (disconnect the WhatsApp session)
+          await fetch(`${EVO_URL}/instance/logout/${settings.instance_id}`, {
+            method: 'DELETE',
+            headers: { apikey: EVO_KEY },
+            signal: AbortSignal.timeout(6000),
+          });
+          // Give the API a moment to finish the session teardown
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {
+          // Non-fatal — instance may already be disconnected
+        }
+        try {
+          // Step B: Delete the instance permanently
+          await fetch(`${EVO_URL}/instance/delete/${settings.instance_id}`, {
+            method: 'DELETE',
+            headers: { apikey: EVO_KEY },
+            signal: AbortSignal.timeout(6000),
+          });
+        } catch {
+          // Non-fatal — instance may have already been deleted
+        }
+      }
+
+      // 3. Manual cascade delete because restaurant_id is not a strict foreign key
+      await Promise.all([
+        supabase.from('store_settings').delete().eq('restaurant_id', restId),
+        supabase.from('products').delete().eq('restaurant_id', restId),
+        supabase.from('categories').delete().eq('restaurant_id', restId),
+        supabase.from('orders').delete().eq('restaurant_id', restId),
+        supabase.from('orders_archive').delete().eq('restaurant_id', restId),
+        supabase.from('coupons').delete().eq('restaurant_id', restId),
+        supabase.from('system_logs').delete().eq('restaurant_id', restId),
+      ]);
+
+      // 4. Delete the restaurant itself
+      const { error } = await supabase.from('restaurants').delete().eq('id', restId);
       if (error) throw error;
+      
       setRestaurants(prev => prev.filter(r => r.id !== deleteTarget.id));
       setDeleteTarget(null);
-      toast.success('Restaurante removido');
-    } catch {
-      toast.error('Erro ao excluir');
+      toast.success('Restaurante e todos os seus dados foram removidos');
+    } catch (error: any) {
+      toast.error('Erro ao excluir: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setDeleting(false);
     }
@@ -361,7 +490,7 @@ export default function SuperAdminRestaurants() {
               <tr>
                 {[
                   { key: 'name',       label: 'Restaurante'    },
-                  { key: null,         label: 'URL / Slug'     },
+                  { key: null,         label: 'URL / Login'    },
                   { key: 'orderCount', label: 'Pedidos'        },
                   { key: null,         label: 'Clientes'       },
                   { key: 'created_at', label: 'Criado em'      },
@@ -414,18 +543,28 @@ export default function SuperAdminRestaurants() {
                     </td>
                     {/* Slug */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[11px] text-purple-400 bg-purple-900/20 px-2 py-0.5 rounded-lg border border-purple-800/30">
-                          /{r.slug}
-                        </span>
-                        <a
-                          href={`/${r.slug}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <ExternalLink className="w-3 h-3 text-gray-500 hover:text-gray-300" />
-                        </a>
+                      <div className="flex flex-col gap-1.5 mt-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[11px] text-purple-400 bg-purple-900/20 px-2 py-0.5 rounded-lg border border-purple-800/30">
+                            /{r.slug}
+                          </span>
+                          <a
+                            href={`/${r.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Acessar Loja Público"
+                          >
+                            <ExternalLink className="w-3 h-3 text-gray-500 hover:text-purple-400" />
+                          </a>
+                        </div>
+                        {r.adminEmail ? (
+                          <div className="text-[10px] text-gray-500 truncate max-w-[140px]" title={r.adminEmail}>
+                            ✉ {r.adminEmail}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-yellow-600">Sem credenciais</div>
+                        )}
                       </div>
                     </td>
                     {/* Orders */}
@@ -506,7 +645,13 @@ export default function SuperAdminRestaurants() {
           onClose={() => { setShowModal(false); setEditTarget(null); }}
         >
           <RestaurantForm
-            initial={editTarget ? { name: editTarget.name, slug: editTarget.slug, active: editTarget.active } : EMPTY_FORM}
+            initial={editTarget ? { 
+              name: editTarget.name, 
+              slug: editTarget.slug, 
+              active: editTarget.active,
+              adminEmail: editTarget.adminEmail || '',
+              adminPassword: editTarget.adminPassword || ''
+            } : EMPTY_FORM}
             onSave={handleSave}
             onCancel={() => { setShowModal(false); setEditTarget(null); }}
             saving={saveLoading}

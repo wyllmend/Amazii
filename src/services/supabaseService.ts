@@ -303,7 +303,7 @@ class SupabaseService {
     }));
   }
 
-  async validateCoupon(code: string, restaurantId: string, customerPhone?: string, customerIp?: string): Promise<Coupon | null> {
+  async validateCoupon(code: string, restaurantId: string, customerPhone?: string, customerIp?: string): Promise<{ coupon: Coupon | null; error?: string }> {
     const normalizedPhone = customerPhone ? normalizePhone(customerPhone) : undefined;
     const { data: coupon, error } = await supabase
       .from('coupons')
@@ -313,10 +313,10 @@ class SupabaseService {
       .eq('active', true)
       .single();
 
-    if (error || !coupon) return null;
+    if (error || !coupon) return { coupon: null, error: 'Cupom não encontrado ou inativo.' };
 
-    if (coupon.usage_limit && coupon.usage_count >= coupon.usage_limit) return null;
-    if (coupon.expiration_date && new Date(coupon.expiration_date) < new Date()) return null;
+    if (coupon.usage_limit && coupon.usage_count >= coupon.usage_limit) return { coupon: null, error: 'Este cupom atingiu o limite máximo de usos.' };
+    if (coupon.expiration_date && new Date(coupon.expiration_date) < new Date()) return { coupon: null, error: 'Este cupom está expirado.' };
 
     if (coupon.first_purchase_only) {
       // Check phone if provided
@@ -326,7 +326,7 @@ class SupabaseService {
           .select('id', { count: 'exact', head: true })
           .eq('customer_phone', normalizedPhone)
           .neq('status', 'cancelado');
-        if (phoneCount && phoneCount > 0) return null;
+        if (phoneCount && phoneCount > 0) return { coupon: null, error: 'Este cupom é válido apenas para a primeira compra.' };
       }
 
       // Check IP if provided
@@ -336,21 +336,23 @@ class SupabaseService {
           .select('id', { count: 'exact', head: true })
           .eq('customer_ip', customerIp)
           .neq('status', 'cancelado');
-        if (ipCount && ipCount > 0) return null;
+        if (ipCount && ipCount > 0) return { coupon: null, error: 'Este cupom é válido apenas para a primeira compra no seu dispositivo.' };
       }
     }
 
     if (normalizedPhone && coupon.used_by?.includes(normalizedPhone)) {
-      return null;
+      return { coupon: null, error: 'Você já utilizou este cupom anteriormente.' };
     }
 
     return {
-      ...coupon,
-      expirationDate: coupon.expiration_date,
-      usageLimit: coupon.usage_limit,
-      usageCount: coupon.usage_count,
-      firstPurchaseOnly: coupon.first_purchase_only,
-      usedBy: coupon.used_by
+      coupon: {
+        ...coupon,
+        expirationDate: coupon.expiration_date,
+        usageLimit: coupon.usage_limit,
+        usageCount: coupon.usage_count,
+        firstPurchaseOnly: coupon.first_purchase_only,
+        usedBy: coupon.used_by
+      }
     };
   }
 
@@ -406,15 +408,17 @@ class SupabaseService {
 
   async updateCoupon(id: string, updates: Partial<Coupon>): Promise<Coupon> {
     const payload: any = { ...updates };
-    if (updates.expirationDate) {
-      payload.expiration_date = updates.expirationDate;
+    if ('expirationDate' in updates) {
+      if (updates.expirationDate !== undefined) payload.expiration_date = updates.expirationDate;
+      else payload.expiration_date = null;
       delete payload.expirationDate;
     }
-    if (updates.usageLimit) {
-      payload.usage_limit = updates.usageLimit;
+    if ('usageLimit' in updates) {
+      if (updates.usageLimit !== undefined) payload.usage_limit = updates.usageLimit;
+      else payload.usage_limit = null;
       delete payload.usageLimit;
     }
-    if (updates.firstPurchaseOnly) {
+    if ('firstPurchaseOnly' in updates) {
       payload.first_purchase_only = updates.firstPurchaseOnly;
       delete payload.firstPurchaseOnly;
     }
@@ -447,14 +451,15 @@ class SupabaseService {
   }
 
   // --- Settings ---
-  async getSettings(restaurantId: string): Promise<StoreSettings> {
+  async getSettings(restaurantId: string): Promise<StoreSettings | null> {
     const { data, error } = await supabase
       .from('store_settings')
       .select('*')
       .eq('restaurant_id', restaurantId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) return null;
     
     return {
       storeName: data.store_name,
@@ -555,10 +560,13 @@ class SupabaseService {
   }
 
   // --- Auth ---
-  async isAuthenticated(): Promise<boolean> {
+  isAuthenticated(): boolean {
+    return localStorage.getItem('amazii_admin_logged') === 'true';
+  }
+
+  async checkSession(): Promise<boolean> {
     const isAdmin = localStorage.getItem('amazii_admin_logged') === 'true';
     if (isAdmin) return true;
-    
     const { data: { session } } = await supabase.auth.getSession();
     return !!session;
   }
@@ -566,6 +574,7 @@ class SupabaseService {
   async loginAdmin(email: string, pass: string, restaurantId: string): Promise<boolean> {
     try {
       const settings = await this.getSettings(restaurantId);
+      if (!settings) return false;
       if (email === settings.adminEmail && pass === settings.adminPassword) {
         localStorage.setItem('amazii_admin_logged', 'true');
         return true;
@@ -586,6 +595,8 @@ class SupabaseService {
   // --- Helpers ---
   async getDeliveryFee(neighborhood: string, restaurantId: string): Promise<number> {
     const settings = await this.getSettings(restaurantId);
+    if (!settings) return 0;
+    
     const rule = settings.deliveryFeesByNeighborhood?.find(
       r => r.neighborhood.toLowerCase() === neighborhood.toLowerCase()
     );
@@ -595,7 +606,7 @@ class SupabaseService {
   async isStoreOpen(restaurantId: string): Promise<boolean> {
     try {
       const settings = await this.getSettings(restaurantId);
-      if (!settings || !settings.openingHours) return false;
+      if (!settings) return false;
       if (settings.emergencyClosed) return false;
 
       const now = new Date();

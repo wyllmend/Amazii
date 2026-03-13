@@ -24,6 +24,7 @@ export default function PublicLayout() {
   useEffect(() => {
     async function loadTenant() {
       if (!tenantSlug) {
+        clearTenant();
         setTenantLoading(false);
         return;
       }

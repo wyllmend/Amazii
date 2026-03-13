@@ -27,19 +27,78 @@ export type RestaurantStats = Restaurant & {
 };
 
 class SuperAdminService {
-  private readonly SUPER_ADMIN_KEY = 'amazii_superadmin_logged';
-  private readonly PASSWORD = import.meta.env.VITE_SUPER_ADMIN_PASSWORD || 'amazii@superadmin2026';
+  private readonly SUPER_ADMIN_KEY = 'elevare_superadmin_logged';
+  // fallback for first login before DB row exists
+  private readonly DEFAULT_PASSWORD = import.meta.env.VITE_SUPER_ADMIN_PASSWORD || 'elevaremenu@superadmin2026';
 
   isAuthenticated(): boolean {
     return localStorage.getItem(this.SUPER_ADMIN_KEY) === 'true';
   }
 
-  login(password: string): boolean {
-    if (password === this.PASSWORD) {
-      localStorage.setItem(this.SUPER_ADMIN_KEY, 'true');
-      return true;
+  async login(email: string, password: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('super_admin_settings')
+        .select('email, password_hash')
+        .limit(1)
+        .single();
+
+      if (error || !data) {
+        // fallback: no DB row yet, use env/default password only
+        if (password === this.DEFAULT_PASSWORD) {
+          localStorage.setItem(this.SUPER_ADMIN_KEY, 'true');
+          return true;
+        }
+        return false;
+      }
+
+      if (email === data.email && password === data.password_hash) {
+        localStorage.setItem(this.SUPER_ADMIN_KEY, 'true');
+        return true;
+      }
+      return false;
+    } catch {
+      // Fallback in case table doesn't exist yet
+      if (password === this.DEFAULT_PASSWORD) {
+        localStorage.setItem(this.SUPER_ADMIN_KEY, 'true');
+        return true;
+      }
+      return false;
     }
-    return false;
+  }
+
+  async getCredentials(): Promise<{ email: string } | null> {
+    try {
+      const { data } = await supabase
+        .from('super_admin_settings')
+        .select('email')
+        .limit(1)
+        .single();
+      return data ? { email: data.email } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateCredentials(newEmail: string, newPassword: string): Promise<void> {
+    const { data: existing } = await supabase
+      .from('super_admin_settings')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (existing?.id) {
+      const { error } = await supabase
+        .from('super_admin_settings')
+        .update({ email: newEmail, password_hash: newPassword, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('super_admin_settings')
+        .insert({ email: newEmail, password_hash: newPassword });
+      if (error) throw error;
+    }
   }
 
   logout(): void {
@@ -114,7 +173,6 @@ class SuperAdminService {
       supabase.from('system_metrics').select('value').eq('metric_type', 'whatsapp_message'),
     ]);
 
-    // Unique customers (by phone)
     const phones = new Set((ordersResult.data || []).map((o: any) => o.customer_phone));
     
     const totalRestaurants = restaurantsResult.count || 0;
@@ -140,7 +198,6 @@ class SuperAdminService {
     cutoffDate.setDate(cutoffDate.getDate() - 90);
     const cutoffISO = cutoffDate.toISOString();
 
-    // Fetch old orders
     const { data: oldOrders, error: fetchError } = await supabase
       .from('orders')
       .select('*')
@@ -150,7 +207,6 @@ class SuperAdminService {
     if (fetchError) throw fetchError;
     if (!oldOrders || oldOrders.length === 0) return 0;
 
-    // Insert into archive
     const archiveRows = oldOrders.map(o => ({
       id: o.id,
       customer_name: o.customer_name,
@@ -176,7 +232,6 @@ class SuperAdminService {
     const { error: insertError } = await supabase.from('orders_archive').upsert(archiveRows);
     if (insertError) throw insertError;
 
-    // Delete from main orders table
     const ids = oldOrders.map(o => o.id);
     const { error: deleteError } = await supabase.from('orders').delete().in('id', ids);
     if (deleteError) throw deleteError;

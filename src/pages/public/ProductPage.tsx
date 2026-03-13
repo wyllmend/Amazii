@@ -18,6 +18,7 @@ export default function ProductPage() {
   const [settings, setSettings] = useState<any>(null);
   
   const restaurantId = useTenantStore((state) => state.restaurantId);
+  const tenantSlug = useTenantStore((state) => state.slug);
 
   const addItem = useCartStore((state) => state.addItem);
 
@@ -32,7 +33,7 @@ export default function ProductPage() {
           setProduct(prodData);
         } else {
           toast.error('Produto não encontrado');
-          navigate('/');
+          navigate(tenantSlug ? `/${tenantSlug}` : '/');
         }
         setSettings(settingsData);
       })
@@ -116,7 +117,7 @@ export default function ProductPage() {
     });
     addItem(product, quantity, orderOptions);
     toast.success('Adicionado ao carrinho!');
-    navigate('/');
+    navigate(tenantSlug ? `/${tenantSlug}` : '/');
   };
 
   const handleWhatsApp = () => {

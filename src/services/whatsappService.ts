@@ -41,14 +41,14 @@ let queueRunning = false;
  * a random delay of 3–7 seconds between each message to simulate
  * a human operator and avoid WhatsApp ban detection.
  */
-async function processQueue() {
+async function processQueue(instanceName: string) {
   if (queueRunning) return;
   queueRunning = true;
 
   while (messageQueue.length > 0) {
     const item = messageQueue.shift()!;
     try {
-      const result = await dispatchMessage(item.phone, item.text);
+      const result = await dispatchMessage(instanceName, item.phone, item.text);
       item.resolve(result);
     } catch (err) {
       item.reject(err);
@@ -67,12 +67,12 @@ async function processQueue() {
  * Sends a single message directly, with composing (typing) status
  * shown for a random 1–3 seconds before the actual text is delivered.
  */
-async function dispatchMessage(phone: string, text: string) {
+async function dispatchMessage(instanceName: string, phone: string, text: string) {
   const cleanPhone = normalisePhone(phone);
 
   // 1. Start composing indicator
   try {
-    await fetch(`${API_URL}/chat/presence/${INSTANCE}`, {
+    await fetch(`${API_URL}/chat/presence/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
       body: JSON.stringify({ number: cleanPhone, options: { presence: 'composing' } })
@@ -85,7 +85,7 @@ async function dispatchMessage(phone: string, text: string) {
   await sleep(randomBetween(1000, 3000));
 
   // 3. Send the actual message
-  const response = await fetch(`${API_URL}/message/sendText/${INSTANCE}`, {
+  const response = await fetch(`${API_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
     body: JSON.stringify({
@@ -112,9 +112,9 @@ async function dispatchMessage(phone: string, text: string) {
  * Applies recommended anti-ban settings to the Evolution API instance.
  * Should be called once after each successful connection/reconnection.
  */
-async function applyAntiBanSettings() {
+async function applyAntiBanSettings(instanceName: string) {
   try {
-    await fetch(`${API_URL}/instance/settings/${INSTANCE}`, {
+    await fetch(`${API_URL}/instance/settings/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
       body: JSON.stringify({
@@ -126,9 +126,9 @@ async function applyAntiBanSettings() {
         syncFullHistory: false
       })
     });
-    console.log('[WhatsApp] Anti-ban settings applied successfully.');
+    console.log(`[WhatsApp] Anti-ban settings applied successfully for ${instanceName}.`);
   } catch (err) {
-    console.warn('[WhatsApp] Could not apply anti-ban settings:', err);
+    console.warn(`[WhatsApp] Could not apply anti-ban settings for ${instanceName}:`, err);
   }
 }
 
@@ -141,44 +141,88 @@ export const whatsappService = {
    * Connects the instance and fetches a QR Code for scanning.
    * Also applies anti-ban settings automatically after connection.
    */
-  async connect() {
+  async connect(instanceName: string) {
     try {
-      const response = await fetch(`${API_URL}/instance/connect/${INSTANCE}`, {
+      let response = await fetch(`${API_URL}/instance/connect/${instanceName}`, {
         headers: { 'apikey': API_KEY }
       });
+
+      // Se a instância não existe (404), vamos criá-la
+      if (response.status === 404) {
+        console.log(`[WhatsApp] Instance ${instanceName} not found. Attempting to create...`);
+        const createRes = await fetch(`${API_URL}/instance/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': API_KEY
+          },
+          body: JSON.stringify({
+            instanceName,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
+          })
+        });
+
+        if (!createRes.ok) {
+          const createErr = await createRes.json().catch(() => ({}));
+          throw new Error(createErr.message || `Erro ao criar instância vazia: ${createRes.status}`);
+        }
+
+        const createData = await createRes.json();
+        
+        // Aplica configurações anti-ban logo após criar
+        applyAntiBanSettings(instanceName);
+
+        // A Evo API v1 e v2 retornam diferentes shapes. Verificamos se veio o qrcode (base64) na resposta
+        if (createData.qrcode && createData.qrcode.base64) {
+          return { base64: createData.qrcode.base64 };
+        } else if (createData?.instance?.state === 'open') {
+          return { base64: null, state: 'open' };
+        } else {
+          // Se não veio na criação, puxamos a conexão novamente
+          response = await fetch(`${API_URL}/instance/connect/${instanceName}`, {
+            headers: { 'apikey': API_KEY }
+          });
+        }
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `API Error: ${response.status}`);
       }
+      
       const data = await response.json();
 
       // Apply anti-ban settings in the background
-      applyAntiBanSettings();
+      applyAntiBanSettings(instanceName);
 
       return data;
     } catch (error: any) {
-      console.error('[WhatsApp] Connect Error:', error);
+      console.error(`[WhatsApp] Connect Error (${instanceName}):`, error);
       throw error;
     }
   },
 
-  async getConnectionState() {
+  async getConnectionState(instanceName: string) {
     try {
-      const response = await fetch(`${API_URL}/instance/connectionState/${INSTANCE}`, {
+      const response = await fetch(`${API_URL}/instance/connectionState/${instanceName}`, {
         headers: { 'apikey': API_KEY }
       });
       if (!response.ok) throw new Error('Failed to get connection state');
       const data = await response.json();
-      return data.instance.state; // 'open', 'connecting', 'disconnected', etc.
+      
+      const state = data?.instance?.state || data?.state || 'disconnected';
+      console.log(`[WhatsApp] Connection state for ${instanceName}:`, state);
+      return state;
     } catch (error) {
-      console.error('[WhatsApp] Connection State Error:', error);
+      console.error(`[WhatsApp] Connection State Error (${instanceName}):`, error);
       return 'disconnected';
     }
   },
 
-  async logout() {
+  async logout(instanceName: string) {
     try {
-      const response = await fetch(`${API_URL}/instance/logout/${INSTANCE}`, {
+      const response = await fetch(`${API_URL}/instance/logout/${instanceName}`, {
         method: 'DELETE',
         headers: { 'apikey': API_KEY }
       });
@@ -188,7 +232,7 @@ export const whatsappService = {
       }
       return response.json();
     } catch (error: any) {
-      console.error('[WhatsApp] Logout Error:', error);
+      console.error(`[WhatsApp] Logout Error (${instanceName}):`, error);
       throw error;
     }
   },
@@ -200,18 +244,16 @@ export const whatsappService = {
    *
    * Safe to call concurrently for bursts of orders.
    */
-  sendMessage(phone: string, text: string): Promise<any> {
+  sendMessage(instanceName: string, phone: string, text: string): Promise<any> {
     return new Promise((resolve, reject) => {
       messageQueue.push({ phone, text, resolve, reject });
-      processQueue(); // No-op if already running
+      processQueue(instanceName); // No-op if already running
     });
   },
 
-  // Note: findChats and findMessages are preserved in case they're needed elsewhere,
-  // even though AdminChat is being removed.
-  async findChats() {
+  async findChats(instanceName: string) {
     try {
-      const response = await fetch(`${API_URL}/chat/findChats/${INSTANCE}`, {
+      const response = await fetch(`${API_URL}/chat/findChats/${instanceName}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
         body: JSON.stringify({
@@ -224,14 +266,14 @@ export const whatsappService = {
       }
       return response.json();
     } catch (error: any) {
-      console.error('[WhatsApp] Find Chats Error:', error);
+      console.error(`[WhatsApp] Find Chats Error (${instanceName}):`, error);
       throw error;
     }
   },
 
-  async findMessages(remoteJid: string) {
+  async findMessages(instanceName: string, remoteJid: string) {
     try {
-      const response = await fetch(`${API_URL}/chat/findMessages/${INSTANCE}`, {
+      const response = await fetch(`${API_URL}/chat/findMessages/${instanceName}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -251,7 +293,7 @@ export const whatsappService = {
       }
       return response.json();
     } catch (error: any) {
-      console.error('[WhatsApp] Find Messages Error:', error);
+      console.error(`[WhatsApp] Find Messages Error (${instanceName}):`, error);
       throw error;
     }
   }

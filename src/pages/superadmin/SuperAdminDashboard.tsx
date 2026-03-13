@@ -16,7 +16,6 @@ const cn = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ')
 
 const EVO_URL  = import.meta.env.VITE_WHATSAPP_API_URL  as string;
 const EVO_KEY  = import.meta.env.VITE_WHATSAPP_API_KEY  as string;
-const EVO_INST = import.meta.env.VITE_WHATSAPP_INSTANCE as string;
 const SB_URL   = import.meta.env.VITE_SUPABASE_URL      as string;
 const SB_KEY   = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
@@ -100,7 +99,6 @@ export default function SuperAdminDashboard() {
   // ── Evolution API / Render ───────────────────────────────────────────────
   const [evoLatency, setEvoLatency]       = useState<number | null>(null);
   const [evoInstances, setEvoInstances]   = useState<EvoInstance[]>([]);
-  const [waConnected, setWaConnected]     = useState<boolean | null>(null);
   const [evoLoading, setEvoLoading]       = useState(true);
 
   // ── Recent errors ────────────────────────────────────────────────────────
@@ -110,7 +108,6 @@ export default function SuperAdminDashboard() {
   const [archivingOrders, setArchivingOrders]   = useState(false);
   const [clearingLogs, setClearingLogs]         = useState(false);
   const [clearingArchive, setClearingArchive]   = useState(false);
-  const [resettingWA, setResettingWA]           = useState(false);
   const [maintenanceMode, setMaintenanceMode]   = useState(false);
 
   // ── Shadow test ──────────────────────────────────────────────────────────
@@ -186,26 +183,8 @@ export default function SuperAdminDashboard() {
           Array.isArray(raw?.instances) ? raw.instances : [];
         setEvoInstances(list);
       }
-
-      // 2. Query true connection state of the specific instance
-      try {
-        const stateRes = await fetch(`${EVO_URL}/instance/connectionState/${EVO_INST}`, {
-          headers: { apikey: EVO_KEY },
-          signal: AbortSignal.timeout(5000),
-        });
-        if (stateRes.ok) {
-          const stateData = await stateRes.json();
-          const state = stateData?.instance?.state || '';
-          setWaConnected(state === 'open' || state === 'connected');
-        } else {
-          setWaConnected(false);
-        }
-      } catch {
-        setWaConnected(false);
-      }
     } catch {
       setEvoLatency(null);
-      setWaConnected(false);
     }
     finally { setEvoLoading(false); }
   };
@@ -249,21 +228,7 @@ export default function SuperAdminDashboard() {
     finally { setClearingArchive(false); }
   };
 
-  // ── Action: Reset WA ─────────────────────────────────────────────────────
-  const resetWA = async () => {
-    setResettingWA(true);
-    try {
-      const res = await fetch(`${EVO_URL}/instance/restart/${EVO_INST}`, {
-        method: 'POST',
-        headers: { apikey: EVO_KEY },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) toast.success('✅ Instância WA reiniciada com sucesso!');
-      else toast.error(`Falha: ${res.status} ${res.statusText}`);
-      setTimeout(() => loadEvo(), 3000);
-    } catch { toast.error('Não foi possível acessar a Evolution API'); }
-    finally { setResettingWA(false); }
-  };
+
 
   // ── Action: Create restaurant ────────────────────────────────────────────
   const createRestaurant = async () => {
@@ -294,7 +259,7 @@ export default function SuperAdminDashboard() {
       await new Promise(r => setTimeout(r, shadowTestSteps[i].durationMs));
       const ok = i === 0 ? sbLatency !== null :
                  i === 1 ? dbRows.orders >= 0 :
-                           waConnected === true;
+                           evoLatency !== null;
       setStepStatuses(p => p.map((_, j) => j === i ? (ok ? 'ok' : 'error') : p[j]));
       if (!ok) { toast.error(`Falha em: ${shadowTestSteps[i].label}`); setTestRunning(false); return; }
     }
@@ -311,7 +276,7 @@ export default function SuperAdminDashboard() {
   const totalRows      = dbRows.orders + dbRows.logs + dbRows.products + dbRows.archive;
   const evoActive      = evoInstances.filter(i => (i.connectionStatus ?? i.state) === 'open' || (i.connectionStatus ?? i.state) === 'connected').length;
   const evoError       = evoInstances.length - evoActive;
-  const overloaded     = dbStatus === 'error' || !waConnected || evoStatus === 'error';
+  const overloaded     = dbStatus === 'error' || evoStatus === 'error';
 
   return (
     <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6 font-mono space-y-5">
@@ -320,8 +285,8 @@ export default function SuperAdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-purple-400" />
-            <h1 className="text-base font-bold tracking-tight">AMAZII SUPER ADMIN</h1>
+            <Shield className="w-5 h-5 text-orange-400" />
+            <h1 className="text-base font-bold tracking-tight">ELEVARE MENU — SUPER ADMIN</h1>
             {overloaded
               ? <span className="px-2 py-0.5 bg-red-900/50 border border-red-700/40 rounded text-[10px] text-red-300 font-bold animate-pulse">⚠ ATENÇÃO REQUERIDA</span>
               : <span className="px-2 py-0.5 bg-green-900/50 border border-green-700/40 rounded text-[10px] text-green-300 font-bold">✓ SISTEMA ESTÁVEL</span>
@@ -341,7 +306,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* ════════════ 1. INFRA STATUS ════════════ */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* Supabase DB */}
         <Card>
@@ -416,12 +381,14 @@ export default function SuperAdminDashboard() {
               ) : evoInstances.length === 0 ? (
                 <p className="text-[11px] text-gray-600 text-center py-2">Nenhuma instância encontrada</p>
               ) : evoInstances.map((inst, i) => {
-                const state = inst.connectionStatus ?? inst.state ?? '';
-                const on = state === 'open' || state === 'connected';
+                const state = inst.connectionStatus ?? inst.state ?? 'disconnected';
+                // Some API responses have connectionStatus, others have state. Checking for various 'connected' variants.
+                const on = state === 'open' || state === 'connected' || state === 'connecting';
+                
                 return (
                   <div key={i} className="flex items-center justify-between py-1 border-b border-gray-800/40 last:border-0">
-                    <div className="flex items-center gap-1.5"><Led on={on} /><span className="text-[11px] text-gray-300">{inst.instanceName}</span></div>
-                    <span className={cn('text-[10px] font-bold', on ? 'text-green-400' : 'text-red-400')}>{state || 'unknown'}</span>
+                    <div className="flex items-center gap-1.5"><Led on={on} /><span className="text-[11px] text-gray-300">{inst.instanceName || 'Instância Desconhecida'}</span></div>
+                    <span className={cn('text-[10px] font-bold', on ? 'text-green-400' : 'text-red-400')}>{state}</span>
                   </div>
                 );
               })}
@@ -435,43 +402,13 @@ export default function SuperAdminDashboard() {
           </div>
         </Card>
 
-        {/* WhatsApp principal */}
-        <Card>
-          <STitle icon={MessageCircle} label="WhatsApp — Instância Principal" />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Led on={waConnected} /><span className="text-[11px] font-bold text-gray-300">{EVO_INST}</span></div>
-              <Pill label={waConnected === null ? '...' : waConnected ? 'CONECTADO' : 'DESCONECTADO'} s={waConnected === null ? 'loading' : waConnected ? 'ok' : 'error'} />
-            </div>
-            {waConnected === false && (
-              <div className="p-3 bg-red-950/30 border border-red-900/30 rounded-xl space-y-2">
-                <div className="flex items-center gap-2">
-                  <WifiOff className="w-4 h-4 text-red-400 flex-shrink-0" />
-                  <p className="text-[11px] text-red-300 font-bold">Instância desconectada!</p>
-                </div>
-                <p className="text-[10px] text-red-400/80">Mensagens não estão sendo enviadas. Use o botão "Reiniciar WA" abaixo ou reconecte em Configurações → WhatsApp.</p>
-              </div>
-            )}
-            {waConnected === true && (
-              <div className="p-3 bg-green-950/20 border border-green-900/30 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-green-400 flex-shrink-0" />
-                  <p className="text-[11px] text-green-300">Conectado — mensagens funcionando</p>
-                </div>
-              </div>
-            )}
-            <div className="text-[10px] text-gray-600 space-y-1 border-t border-gray-800 pt-2">
-              <div className="flex justify-between"><span>API URL</span><span className="text-gray-500 truncate max-w-[160px]">{EVO_URL?.replace('https://','')}</span></div>
-              <div className="flex justify-between"><span>Total instâncias</span><span className="text-gray-400 font-bold">{evoInstances.length}</span></div>
-            </div>
-          </div>
-        </Card>
+
       </div>
 
       {/* ════════════ 2. FIX OVERLOAD ════════════ */}
       <Card>
         <STitle icon={Zap} label="Anti-Sobrecarga — Ações de Recuperação" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
           {/* Arquivar pedidos */}
           <div className="bg-gray-800/40 rounded-xl p-3 border border-gray-700/40 space-y-2">
@@ -508,18 +445,6 @@ export default function SuperAdminDashboard() {
             <Btn onClick={clearArchive} label="Limpar arquivo" icon={AlertOctagon} variant="danger" loading={clearingArchive} full />
           </div>
 
-          {/* Reiniciar WA */}
-          <div className={cn('rounded-xl p-3 border space-y-2', !waConnected ? 'bg-red-950/30 border-red-800/40' : 'bg-gray-800/40 border-gray-700/40')}>
-            <div className="flex items-center gap-2">
-              <RotateCcw className={cn('w-4 h-4', !waConnected ? 'text-red-400' : 'text-gray-400')} />
-              <span className="text-xs font-bold text-gray-200">Reiniciar WhatsApp</span>
-            </div>
-            <p className="text-[11px] text-gray-500">Chama <code className="text-purple-400">POST /instance/restart</code> na Evolution API. Use se a instância travar ou desconectar.</p>
-            <p className={cn('text-[11px]', waConnected ? 'text-green-400' : 'text-red-400 font-bold')}>
-              {waConnected === null ? '...' : waConnected ? 'Online — preventivo' : '⚠ Offline — URGENTE'}
-            </p>
-            <Btn onClick={resetWA} label="Reiniciar WA" icon={RotateCcw} variant={!waConnected ? 'danger' : 'default'} loading={resettingWA} full />
-          </div>
         </div>
 
         {/* Maintenance toggle */}
@@ -557,7 +482,7 @@ export default function SuperAdminDashboard() {
             {[
               { label: 'Supabase API',    desc: 'Latência do banco de dados',    ok: sbLatency !== null },
               { label: 'Contagem de Dados', desc: 'Tabelas acessíveis e íntegras', ok: dbRows.orders >= 0 },
-              { label: 'Evolution API',   desc: 'WhatsApp conectado e operativo', ok: waConnected === true },
+              { label: 'Evolution API',   desc: 'API alcançável e responsiva', ok: evoLatency !== null },
             ].map((step, i) => {
               const st = stepStatuses[i];
               return (

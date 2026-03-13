@@ -1,5 +1,7 @@
 import { supabaseService } from '@/services/supabaseService';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useTenantStore } from '@/store/tenantStore';
+import { useEffect } from 'react';
 
 // Layouts
 import PublicLayout from '@/layouts/PublicLayout';
@@ -24,13 +26,28 @@ import AdminCategories from '@/pages/admin/AdminCategories';
 import AdminCoupons from '@/pages/admin/AdminCoupons';
 import AdminLeads from '@/pages/admin/AdminLeads';
 import AdminWhatsApp from '@/pages/admin/AdminWhatsApp';
-import AdminKanban from '@/pages/admin/AdminKanban';
 import AdminOrdersHistory from '@/pages/admin/AdminOrdersHistory';
 
 // Super Admin Pages
 import SuperAdminLogin from '@/pages/superadmin/SuperAdminLogin';
 import SuperAdminDashboard from '@/pages/superadmin/SuperAdminDashboard';
 import SuperAdminRestaurants from '@/pages/superadmin/SuperAdminRestaurants';
+import SuperAdminConfig from '@/pages/superadmin/SuperAdminConfig';
+
+function AdminRootRedirect() {
+  const navigate = useNavigate();
+  const slug = useTenantStore((s) => s.slug);
+  
+  useEffect(() => {
+    if (slug) {
+      navigate(`/admin/${slug}/dashboard`, { replace: true });
+    } else {
+      navigate('/', { replace: true });
+    }
+  }, [navigate, slug]);
+
+  return null;
+}
 
 function App() {
   return (
@@ -46,6 +63,7 @@ function App() {
         </Route>
 
         {/* Admin Routes */}
+        <Route path="/admin" element={<AdminRootRedirect />} />
         <Route path="/admin/:tenantSlug/login" element={<AdminLoginPage />} />
         <Route path="/admin/:tenantSlug" element={<AdminLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -54,7 +72,6 @@ function App() {
           <Route path="categorias" element={<AdminCategories />} />
           <Route path="pedidos" element={<AdminOrders />} />
           <Route path="historico-pedidos" element={<AdminOrdersHistory />} />
-          <Route path="kanban" element={<AdminKanban />} />
           <Route path="relatorios" element={<AdminReports />} />
           <Route path="cupons" element={<AdminCoupons />} />
           <Route path="leads" element={<AdminLeads />} />
@@ -68,7 +85,20 @@ function App() {
           <Route index element={<Navigate to="/superadmin/dashboard" replace />} />
           <Route path="dashboard" element={<SuperAdminDashboard />} />
           <Route path="restaurantes" element={<SuperAdminRestaurants />} />
+          <Route path="configuracoes" element={<SuperAdminConfig />} />
         </Route>
+
+        {/* 404 — Catch-all */}
+        <Route path="*" element={
+          <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 text-center">
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+              <span className="text-3xl">🔍</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Página não encontrada</h1>
+            <p className="text-gray-500 mb-6 max-w-sm">O endereço que você tentou acessar não existe.</p>
+            <a href="/" className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-purple-700 transition-colors">Voltar ao início</a>
+          </div>
+        } />
       </Routes>
     </BrowserRouter>
   );

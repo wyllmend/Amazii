@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabaseService } from '@/services/supabaseService';
 import { Order, OrderStatus } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
-import { Search, Filter, ChevronLeft, CheckCircle2, XCircle, Calendar } from 'lucide-react';
+import { Search, ChevronLeft, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTenantStore } from '@/store/tenantStore';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -33,6 +33,7 @@ type FilterType = 'all' | 'finalizado' | 'cancelado';
 type DateFilter = '7d' | '30d' | '90d' | 'all';
 
 export default function AdminOrdersHistory() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const restaurantId = useTenantStore((state) => state.restaurantId);
   const [orders, setOrders]       = useState<Order[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -92,7 +93,7 @@ export default function AdminOrdersHistory() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link
-          to="/admin/pedidos"
+          to={`/admin/${tenantSlug}/pedidos`}
           className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />

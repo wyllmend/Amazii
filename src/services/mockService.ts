@@ -113,13 +113,13 @@ class MockService {
     return this.get<Coupon[]>(STORAGE_KEYS.COUPONS) || [];
   }
 
-  async validateCoupon(code: string): Promise<Coupon | null> {
+  async validateCoupon(code: string): Promise<{ coupon: Coupon | null; error?: string }> {
     const coupons = await this.getCoupons();
     const coupon = coupons.find(c => c.code === code && c.active);
-    if (!coupon) return null;
-    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) return null;
-    if (coupon.expirationDate && new Date(coupon.expirationDate) < new Date()) return null;
-    return coupon;
+    if (!coupon) return { coupon: null, error: 'Cupom não encontrado ou inativo.' };
+    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) return { coupon: null, error: 'Este cupom esgotou o limite de usos.' };
+    if (coupon.expirationDate && new Date(coupon.expirationDate) < new Date()) return { coupon: null, error: 'Este cupom está expirado.' };
+    return { coupon };
   }
 
   async createCoupon(coupon: Omit<Coupon, 'id' | 'usageCount'>): Promise<Coupon> {

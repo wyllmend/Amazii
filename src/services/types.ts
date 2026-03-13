@@ -114,8 +114,8 @@ export type StoreSettings = {
   storeName: string;
   storeLogo?: string;
   storeAddress?: string;
-  adminEmail: string; 
-  adminPassword: string; 
+  adminEmail?: string; 
+  adminPassword?: string; 
   deliveryFeeBase: number;
   deliveryFeesByNeighborhood: DeliveryFeeRule[] | null;
   minOrderValue: number;

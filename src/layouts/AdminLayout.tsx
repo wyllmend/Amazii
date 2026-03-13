@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Package, ShoppingBag, Settings, LogOut, 
-  Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban
+  Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban, History
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
@@ -46,6 +46,7 @@ export default function AdminLayout() {
   useEffect(() => {
     async function resolveTenant() {
       if (!tenantSlug) {
+        clearTenant();
         setTenantLoading(false);
         setTenantError(true);
         return;
@@ -94,51 +95,56 @@ export default function AdminLayout() {
 
     // Audio Unlock Strategy
     const unlockAudio = () => {
-      if (audioRef.current) {
+      if (audioRef.current && audioRef.current.paused) {
         audioRef.current.play().then(() => {
           audioRef.current?.pause();
-          audioRef.current!.currentTime = 0;
+          if (audioRef.current) audioRef.current.currentTime = 0;
           console.log('Audio system unlocked');
-        }).catch(e => console.log('Audio unlock failed:', e));
+        }).catch(e => console.log('Audio unlock failed or already unlocked:', e));
       }
       window.removeEventListener('click', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('admin-unlock-audio', unlockAudio);
     };
 
     window.addEventListener('touchstart', unlockAudio);
+    window.addEventListener('admin-unlock-audio', unlockAudio);
     
     if (!restaurantId) return;
 
     const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
       if (event === 'INSERT') {
-        const isEnabled = localStorage.getItem('admin_notifications_enabled') !== 'false';
-        if (!isEnabled) return;
-
         console.log('Novo pedido recebido:', order.id);
+        const isEnabled = localStorage.getItem('admin_notifications_enabled') !== 'false';
         
-        // Play notification sound
-        if (audioRef.current) {
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(e => {
-            console.log('Audio play blocked partially, trying again on next interaction');
-          });
-        }
+        if (isEnabled) {
+          // Play notification sound
+          if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(e => {
+                console.log('Audio play blocked algorithmically by browser:', e);
+              });
+            }
+          }
 
-        // Browser System Notification
-        if (Notification.permission === 'granted') {
-          try {
-            const notification = new Notification('Novo Pedido - Amazii!', {
-              body: `Pedido #${order.id.slice(0, 8)} de ${order.customerName}`,
-              icon: '/vite.svg', // Fallback to a default icon
-              tag: 'new-order'
-            });
-            notification.onclick = (e) => {
-              e.preventDefault();
-              window.focus();
-              navigate(`/admin/${tenantSlug}/pedidos`);
-            };
-          } catch (e) {
-            console.error('Browser notification error:', e);
+          // Browser System Notification
+          if (Notification.permission === 'granted') {
+            try {
+              const notification = new Notification('Novo Pedido - Amazii!', {
+                body: `Pedido #${order.id.slice(0, 8)} de ${order.customerName}`,
+                icon: '/vite.svg', // Fallback to a default icon
+                tag: 'new-order'
+              });
+              notification.onclick = (e) => {
+                e.preventDefault();
+                window.focus();
+                navigate(`/admin/${tenantSlug}/pedidos`);
+              };
+            } catch (e) {
+              console.error('Browser notification error:', e);
+            }
           }
         }
         
@@ -197,6 +203,7 @@ export default function AdminLayout() {
     { icon: Package, label: 'Produtos', path: `/admin/${tenantSlug}/produtos` },
     { icon: Tag, label: 'Categorias', path: `/admin/${tenantSlug}/categorias` },
     { icon: ShoppingBag, label: 'Pedidos', path: `/admin/${tenantSlug}/pedidos` },
+    { icon: ShoppingBag, label: 'Histórico', path: `/admin/${tenantSlug}/historico-pedidos` },
     { icon: BarChart3, label: 'Relatórios', path: `/admin/${tenantSlug}/relatorios` },
     { icon: Tag, label: 'Cupons', path: `/admin/${tenantSlug}/cupons` },
     { icon: Users, label: 'Leads / CRM', path: `/admin/${tenantSlug}/leads` },

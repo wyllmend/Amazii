@@ -19,6 +19,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     async function resolveTenant() {
       if (!tenantSlug) {
+        clearTenant();
         setTenantLoading(false);
         setTenantError(true);
         return;
@@ -118,7 +119,6 @@ export default function AdminLoginPage() {
                 required
               />
             </div>
-            <p className="text-xs text-gray-400 mt-2 text-right">Dica: admin123</p>
           </div>
 
           <button

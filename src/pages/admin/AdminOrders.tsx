@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { whatsappService } from '@/services/whatsappService';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useTenantStore } from '@/store/tenantStore';
 
 // Active statuses shown in the main orders panel
@@ -41,6 +41,7 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 };
 
 export default function AdminOrders() {
+  const { tenantSlug = 'default' } = useParams<{ tenantSlug: string }>();
   const restaurantId = useTenantStore((state) => state.restaurantId);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,15 @@ export default function AdminOrders() {
     if (!restaurantId) return;
     fetchOrders();
     supabaseService.getSettings(restaurantId).then(setSettings);
+    
+    // Unlock audio context on first interaction in this view
+    const unlockAudio = () => {
+      window.dispatchEvent(new CustomEvent('admin-unlock-audio'));
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
     
     // Subscribe to real-time changes
     const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
@@ -76,6 +86,8 @@ export default function AdminOrders() {
       if (subscription && typeof subscription.unsubscribe === 'function') {
         subscription.unsubscribe();
       }
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
     };
   }, [restaurantId]);
 
@@ -124,7 +136,7 @@ export default function AdminOrders() {
 
     if (message) {
       try {
-        await whatsappService.sendMessage(order.customerPhone, message);
+        await whatsappService.sendMessage(tenantSlug, order.customerPhone, message);
         console.log(`WhatsApp notification sent for order ${order.id}`);
       } catch (error) {
         console.error('Failed to send WhatsApp notification:', error);
@@ -228,7 +240,7 @@ export default function AdminOrders() {
             {dismissedIds.size > 0 ? <History className="w-4 h-4" /> : <Eraser className="w-4 h-4" />}
           </button>
           <Link
-            to="/admin/historico-pedidos"
+            to={`/admin/${tenantSlug}/historico-pedidos`}
             title="Ver histórico completo"
             className="p-3 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-amazii-primary hover:border-purple-200 transition-colors shadow-sm flex-shrink-0"
           >

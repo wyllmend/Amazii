@@ -14,8 +14,8 @@ const settingsSchema = z.object({
   storeLogo: z.string().nullable().optional(),
   storeAddress: z.string().nullable().optional(),
   
-  adminEmail: z.string().email('Email inválido'),
-  adminPassword: z.string().min(6, 'Senha deve ter 6+ caracteres'),
+  adminEmail: z.string().email('Email inválido').or(z.literal('')),
+  adminPassword: z.string().min(6, 'Senha deve ter 6+ caracteres').or(z.literal('')),
   
   deliveryFeeBase: z.coerce.number().min(0),
   deliveryFeesByNeighborhood: z.array(z.object({
@@ -124,7 +124,31 @@ export default function AdminSettings() {
   const { register, control, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema) as any,
     defaultValues: {
-      banners: []
+      storeName: '',
+      adminEmail: '',
+      adminPassword: '',
+      deliveryFeeBase: 0,
+      deliveryFeesByNeighborhood: [],
+      minOrderValue: 0,
+      whatsappNumber: '',
+      whatsappPrefix: '',
+      deliveryTimeMin: 30,
+      deliveryTimeMax: 60,
+      allowPickup: false,
+      emergencyClosed: false,
+      openingHours: {
+        monday:    { open: '09:00', close: '22:00', active: true  },
+        tuesday:   { open: '09:00', close: '22:00', active: true  },
+        wednesday: { open: '09:00', close: '22:00', active: true  },
+        thursday:  { open: '09:00', close: '22:00', active: true  },
+        friday:    { open: '09:00', close: '22:00', active: true  },
+        saturday:  { open: '10:00', close: '22:00', active: true  },
+        sunday:    { open: '10:00', close: '20:00', active: false },
+      },
+      primaryColor: '#7c3aed',
+      secondaryColor: '#a78bfa',
+      banners: [],
+      socialLinks: { instagram: '', facebook: '', tiktok: '' },
     }
   });
 
@@ -144,13 +168,18 @@ export default function AdminSettings() {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      if (!restaurantId) return;
+      if (!restaurantId) { setLoading(false); return; }
       try {
         const data = await supabaseService.getSettings(restaurantId);
-        // Set all values
-        Object.entries(data).forEach(([key, value]) => {
-          setValue(key as any, value);
-        });
+        if (data) {
+          // Merge loaded values onto form preserving defaults for missing fields
+          Object.entries(data).forEach(([key, value]) => {
+            if (value !== null && value !== undefined) {
+              setValue(key as any, value);
+            }
+          });
+        }
+        // If data is null (new restaurant), the form defaultValues are already set — just mark loaded
       } catch (error) {
         toast.error('Erro ao carregar configurações');
       } finally {
@@ -161,13 +190,14 @@ export default function AdminSettings() {
   }, [setValue, restaurantId]);
 
   const onSubmit = async (data: SettingsForm) => {
-    if (!restaurantId) return;
-    console.log('Submitting settings data:', data);
+    if (!restaurantId) {
+      toast.error('Restaurante não identificado. Faça login novamente.');
+      return;
+    }
     try {
-      const result = await supabaseService.updateSettings(data, restaurantId);
-      console.log('Update result:', result);
+      await supabaseService.updateSettings(data, restaurantId);
       await refreshSettings();
-      toast.success('Configurações salvas com sucesso');
+      toast.success('Configurações salvas com sucesso!');
     } catch (error: any) {
       console.error('Error saving settings:', error);
       toast.error(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`);

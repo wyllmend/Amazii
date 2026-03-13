@@ -3,8 +3,10 @@ import { QrCode, Smartphone, RefreshCw, CheckCircle2, AlertCircle, Loader2, Send
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { whatsappService } from '@/services/whatsappService';
+import { useParams } from 'react-router-dom';
 
 export default function AdminWhatsApp() {
+  const { tenantSlug = 'default' } = useParams<{ tenantSlug: string }>();
   const [isConnected, setIsConnected] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export default function AdminWhatsApp() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const state = await whatsappService.getConnectionState();
+        const state = await whatsappService.getConnectionState(tenantSlug);
         setIsConnected(state === 'open');
       } catch (error) {
         setIsConnected(false);
@@ -28,13 +30,13 @@ export default function AdminWhatsApp() {
     checkStatus();
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tenantSlug]);
 
   const generateQR = async () => {
     setLoadingQR(true);
     setQrCode(null);
     try {
-      const data = await whatsappService.connect();
+      const data = await whatsappService.connect(tenantSlug);
       if (data.base64) {
         setQrCode(data.base64);
         toast.success('Novo QR Code gerado');
@@ -51,7 +53,7 @@ export default function AdminWhatsApp() {
   const handleDisconnect = async () => {
     if (window.confirm('Deseja desconectar o WhatsApp? As mensagens automáticas pararão de ser enviadas.')) {
       try {
-        await whatsappService.logout();
+        await whatsappService.logout(tenantSlug);
         setIsConnected(false);
         setQrCode(null);
         toast.info('WhatsApp desconectado');
@@ -69,7 +71,7 @@ export default function AdminWhatsApp() {
     
     setSendingTest(true);
     try {
-      await whatsappService.sendMessage(testPhone, 'Olá! Esta é uma mensagem de teste do seu sistema de delivery. 🍧');
+      await whatsappService.sendMessage(tenantSlug, testPhone, 'Olá! Esta é uma mensagem de teste do seu sistema de delivery. 🍧');
       toast.success(`Mensagem de teste enviada para ${testPhone}`);
       setTestPhone('');
     } catch (error: any) {

@@ -11,6 +11,7 @@ import { useTenantStore } from '@/store/tenantStore';
 export default function CartPage() {
   const navigate = useNavigate();
   const restaurantId = useTenantStore((state) => state.restaurantId);
+  const tenantSlug = useTenantStore((state) => state.slug);
   const { items, removeItem, updateQuantity, coupon, applyCoupon, subtotal, total } = useCartStore();
   const [couponCode, setCouponCode] = useState('');
   const [loadingCoupon, setLoadingCoupon] = useState(false);
@@ -33,13 +34,13 @@ export default function CartPage() {
     if (!code || !restaurantId) return;
     setLoadingCoupon(true);
     try {
-      const validCoupon = await supabaseService.validateCoupon(code, restaurantId, undefined, customerIp);
-      if (validCoupon) {
-        applyCoupon(validCoupon);
+      const result = await supabaseService.validateCoupon(code, restaurantId, undefined, customerIp);
+      if (result.coupon) {
+        applyCoupon(result.coupon);
         toast.success('Cupom aplicado!');
         setCouponCode('');
       } else {
-        toast.error('Cupom inválido ou expirado');
+        toast.error(result.error || 'Cupom inválido ou expirado');
         applyCoupon(null);
       }
     } catch {
@@ -70,7 +71,7 @@ export default function CartPage() {
         <h2 className="text-xl font-bold text-gray-900 mb-2">Carrinho vazio</h2>
         <p className="text-gray-400 text-sm mb-7">Adicione produtos para continuar.</p>
         <Link
-          to="/"
+          to={tenantSlug ? `/${tenantSlug}` : '/'}
           className="bg-amazii-primary text-white px-8 py-3 rounded-xl font-semibold shadow-lg shadow-amazii-primary/20 active:scale-[0.98] transition-all"
         >
           Ver Cardápio
@@ -188,7 +189,7 @@ export default function CartPage() {
             <span>{formatCurrency(finalTotal)}</span>
           </div>
           <button
-            onClick={() => navigate('/checkout')}
+            onClick={() => navigate(tenantSlug ? `/${tenantSlug}/checkout` : '/checkout')}
             className="w-full bg-amazii-primary hover:bg-amazii-dark text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-amazii-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-2"
           >
             Finalizar Compra

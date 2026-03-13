@@ -3,12 +3,16 @@ import { supabaseService } from '@/services/supabaseService';
 import { StoreSettings } from '@/services/types';
 import { useTenantStore } from '@/store/tenantStore';
 
-const cachedSettings: Record<string, StoreSettings> = {};
+const cachedSettings: Record<string, StoreSettings | null> = {};
 
 export function useSettings() {
   const restaurantId = useTenantStore((state) => state.restaurantId);
-  const [settings, setSettings] = useState<StoreSettings | null>(restaurantId ? cachedSettings[restaurantId] || null : null);
-  const [loading, setLoading] = useState(restaurantId ? !cachedSettings[restaurantId] : true);
+  const [settings, setSettings] = useState<StoreSettings | null>(
+    restaurantId && restaurantId in cachedSettings ? cachedSettings[restaurantId] : null
+  );
+  const [loading, setLoading] = useState(
+    restaurantId ? !(restaurantId in cachedSettings) : true
+  );
 
   const refreshSettings = useCallback(async () => {
     if (!restaurantId) return null;
@@ -25,7 +29,7 @@ export function useSettings() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    if (!cachedSettings[restaurantId]) {
+    if (!(restaurantId in cachedSettings)) {
       setLoading(true);
       refreshSettings().finally(() => setLoading(false));
     } else {
