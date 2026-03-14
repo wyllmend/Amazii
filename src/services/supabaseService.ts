@@ -124,10 +124,22 @@ class SupabaseService {
       .from('categories')
       .select('*')
       .eq('restaurant_id', restaurantId)
+      .order('sort_order', { ascending: true, nullsFirst: false })
       .order('name');
 
     if (error) throw error;
     return data || [];
+  }
+
+  async updateCategoryOrder(orderedIds: string[]): Promise<void> {
+    const updates = orderedIds.map((id, index) => ({ id, sort_order: index + 1 }));
+    for (const update of updates) {
+      const { error } = await supabase
+        .from('categories')
+        .update({ sort_order: update.sort_order })
+        .eq('id', update.id);
+      if (error) throw error;
+    }
   }
 
   async createCategory(category: Omit<Category, 'id'>, restaurantId: string): Promise<Category> {

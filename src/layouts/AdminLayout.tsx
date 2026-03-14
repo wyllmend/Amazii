@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, Package, ShoppingBag, Settings, LogOut, 
+import {
+  LayoutDashboard, Package, ShoppingBag, Settings, LogOut,
   Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban, History
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
@@ -19,11 +19,11 @@ export default function AdminLayout() {
 
   const { settings } = useSettings();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() =>
     localStorage.getItem('admin_notifications_enabled') !== 'false'
   );
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
+
   const location = useLocation();
   const navigate = useNavigate();
   const isAuthenticated = supabaseService.isAuthenticated();
@@ -109,14 +109,14 @@ export default function AdminLayout() {
 
     window.addEventListener('touchstart', unlockAudio);
     window.addEventListener('admin-unlock-audio', unlockAudio);
-    
+
     if (!restaurantId) return;
 
     const subscription = supabaseService.subscribeToOrders(restaurantId, (order, event) => {
       if (event === 'INSERT') {
         console.log('Novo pedido recebido:', order.id);
         const isEnabled = localStorage.getItem('admin_notifications_enabled') !== 'false';
-        
+
         if (isEnabled) {
           // Play notification sound
           if (audioRef.current) {
@@ -147,7 +147,7 @@ export default function AdminLayout() {
             }
           }
         }
-        
+
         // Show the toast
         toast.success('Novo Pedido Recebido! 🔔', {
           description: `Pedido #${order.id.slice(0, 8)} de ${order.customerName}`,
@@ -215,7 +215,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-gray-50 flex">
       <Toaster position="top-right" richColors closeButton />
       {/* Sidebar */}
-      <aside 
+      <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0",
           !isSidebarOpen && "-translate-x-full md:hidden"
@@ -249,7 +249,7 @@ export default function AdminLayout() {
         </nav>
 
         <div className="absolute bottom-0 w-full p-4 border-t border-gray-100">
-          <button 
+          <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
@@ -262,7 +262,7 @@ export default function AdminLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6">
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 rounded-lg hover:bg-gray-100 md:hidden"
           >

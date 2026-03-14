@@ -10,7 +10,7 @@ import { useTenantStore } from '@/store/tenantStore';
 export default function PublicLayout() {
   const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const baseUrl = tenantSlug ? `/${tenantSlug}` : '';
-  
+
   const { restaurantId, setTenant, clearTenant } = useTenantStore();
   const [tenantLoading, setTenantLoading] = useState(true);
   const [tenantNotFound, setTenantNotFound] = useState(false);
@@ -28,7 +28,7 @@ export default function PublicLayout() {
         setTenantLoading(false);
         return;
       }
-      
+
       try {
         const rest = await supabaseService.getRestaurantBySlug(tenantSlug);
         if (rest && rest.active) {
@@ -50,10 +50,10 @@ export default function PublicLayout() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => {});
+    supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => { });
 
     const interval = setInterval(() => {
-      supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => {});
+      supabaseService.isStoreOpen(restaurantId).then(setIsStoreOpen).catch(() => { });
     }, 60000);
     return () => clearInterval(interval);
   }, [restaurantId]);

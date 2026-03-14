@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { supabaseService } from '@/services/supabaseService';
 import { Category } from '@/services/types';
-import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Loader2, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTenantStore } from '@/store/tenantStore';
 
@@ -19,6 +19,7 @@ export default function AdminCategories() {
   const restaurantId = useTenantStore((state) => state.restaurantId);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reordering, setReordering] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -92,6 +93,27 @@ export default function AdminCategories() {
     }
   };
 
+  const moveCategory = async (index: number, direction: 'up' | 'down') => {
+    const newCategories = [...categories];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    if (targetIndex < 0 || targetIndex >= newCategories.length) return;
+
+    // Swap
+    [newCategories[index], newCategories[targetIndex]] = [newCategories[targetIndex], newCategories[index]];
+    setCategories(newCategories);
+
+    setReordering(true);
+    try {
+      await supabaseService.updateCategoryOrder(newCategories.map((c) => c.id));
+    } catch (error) {
+      toast.error('Erro ao salvar ordem');
+      fetchCategories(); // revert on error
+    } finally {
+      setReordering(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
@@ -103,7 +125,10 @@ export default function AdminCategories() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Categorias</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Categorias</h1>
+          <p className="text-sm text-gray-500 mt-1">Use as setas para definir a ordem de exibição no cardápio</p>
+        </div>
         <button
           onClick={() => handleOpenModal()}
           className="bg-amazii-primary hover:bg-amazii-dark text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -118,15 +143,44 @@ export default function AdminCategories() {
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
               <tr>
+                <th className="px-4 py-4 w-10 text-center">#</th>
                 <th className="px-6 py-4">Nome</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {categories.map((category) => (
+              {categories.map((category, index) => (
                 <tr key={category.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-gray-900">{category.name}</td>
+                  <td className="px-4 py-4">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <button
+                        onClick={() => moveCategory(index, 'up')}
+                        disabled={index === 0 || reordering}
+                        className="p-0.5 text-gray-300 hover:text-amazii-primary disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                        title="Mover para cima"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <GripVertical className="w-3.5 h-3.5 text-gray-300" />
+                      <button
+                        onClick={() => moveCategory(index, 'down')}
+                        disabled={index === categories.length - 1 || reordering}
+                        className="p-0.5 text-gray-300 hover:text-amazii-primary disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                        title="Mover para baixo"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold">
+                        {index + 1}
+                      </span>
+                      <span className="font-medium text-gray-900">{category.name}</span>
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${category.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {category.active ? 'Ativa' : 'Inativa'}
@@ -137,12 +191,14 @@ export default function AdminCategories() {
                       <button 
                         onClick={() => handleOpenModal(category)}
                         className="p-2 text-gray-400 hover:text-amazii-primary hover:bg-purple-50 rounded-lg transition-colors"
+                        title="Editar"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => handleDelete(category.id)}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Excluir"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -209,4 +265,3 @@ export default function AdminCategories() {
     </div>
   );
 }
-

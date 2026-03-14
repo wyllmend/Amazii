@@ -34,6 +34,7 @@ export type Category = {
   id: string;
   name: string;
   active: boolean;
+  sort_order?: number;
 };
 
 export type OrderStatus = 'aguardando_pagamento' | 'pago' | 'aceito' | 'em_preparo' | 'saiu_entrega' | 'pronto_retirada' | 'finalizado' | 'cancelado';
