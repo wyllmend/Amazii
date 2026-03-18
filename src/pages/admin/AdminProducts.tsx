@@ -31,7 +31,7 @@ const optionGroupSchema = z.object({
 
 const productSchema = z.object({
   name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  description: z.string().min(10, 'Descrição deve ter pelo menos 10 caracteres'),
+  description: z.string().optional(),
   price: z.coerce.number().min(0, 'Preço inválido'),
   image: z.string().optional(),
   categoryId: z.string().min(1, 'Selecione uma categoria'),

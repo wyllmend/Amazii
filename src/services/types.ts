@@ -20,7 +20,7 @@ export type ProductOptionGroup = {
 export type Product = {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   price: number;
   image: string;
   categoryId: string;
@@ -70,7 +70,9 @@ export type Order = {
   discount: number;
   total: number;
   status: OrderStatus;
-  paymentMethod: 'pix' | 'credit_card' | 'dinheiro';
+  paymentMethod: 'pix' | 'credit_card' | 'debit_card' | 'dinheiro';
+  cardSubtype?: 'credit' | 'debit';
+  cardFee?: number;
   changeFor?: number;
   deliveryMethod: DeliveryMethod;
   customerIp?: string;
@@ -137,4 +139,15 @@ export type StoreSettings = {
     facebook?: string;
     tiktok?: string;
   };
+  creditCardFeeEnabled?: boolean;
+  creditCardFeeType?: 'percent' | 'fixed';
+  creditCardFeePercent?: number;
+  debitCardFeeEnabled?: boolean;
+  debitCardFeeType?: 'percent' | 'fixed';
+  debitCardFeePercent?: number;
+  printerWidth?: '80mm' | '58mm' | 'A4';
+  paymentPixEnabled?: boolean;
+  paymentCashEnabled?: boolean;
+  paymentCreditCardEnabled?: boolean;
+  paymentDebitCardEnabled?: boolean;
 };

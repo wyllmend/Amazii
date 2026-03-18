@@ -4,7 +4,7 @@ import { Order, OrderStatus } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { 
   BarChart3, Calendar, Filter, Download, DollarSign, 
-  ShoppingBag, TrendingUp, CreditCard, Package, Archive, Eraser
+  ShoppingBag, TrendingUp, CreditCard, Package, Bike, Store
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -126,9 +126,23 @@ export default function AdminReports() {
     
     // Completed orders for revenue calculation (optional, depending on business logic)
     const completedOrders = filteredOrders.filter(o => o.status === 'finalizado');
+    const cancelledOrders = filteredOrders.filter(o => o.status === 'cancelado');
     const completedRevenue = completedOrders.reduce((sum, order) => sum + order.total, 0);
+    const cancelledTotal = cancelledOrders.reduce((sum, order) => sum + order.total, 0);
 
-    return { totalRevenue, totalOrders, averageOrderValue, completedRevenue };
+    // Delivery metrics (only finalizado orders)
+    const deliveryOrders = completedOrders.filter(o => o.deliveryMethod === 'delivery');
+    const pickupOrders = completedOrders.filter(o => o.deliveryMethod === 'pickup');
+    const totalDeliveryFee = deliveryOrders.reduce((sum, o) => sum + (o.deliveryFee ?? 0), 0);
+
+    return { 
+      totalRevenue, totalOrders, averageOrderValue, completedRevenue,
+      totalDeliveries: deliveryOrders.length,
+      totalPickups: pickupOrders.length,
+      totalDeliveryFee,
+      cancelledCount: cancelledOrders.length,
+      cancelledTotal
+    };
   }, [filteredOrders]);
 
   // Chart Data: Revenue by Day
@@ -201,24 +215,6 @@ export default function AdminReports() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Relatórios e Análises</h1>
           <p className="text-gray-500 text-sm">Acompanhe o desempenho da sua loja</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-amazii-primary/40 hover:text-amazii-primary transition-colors shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Exportar CSV
-          </button>
-          <button
-            onClick={handleArchive}
-            disabled={archiving}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-red-200 hover:text-red-500 transition-colors shadow-sm disabled:opacity-50"
-            title="Arquiva pedidos finalizados/cancelados com mais de 90 dias"
-          >
-            <Archive className="w-4 h-4" />
-            {archiving ? 'Arquivando...' : 'Arquivar antigos'}
-          </button>
         </div>
       </div>
 
@@ -305,6 +301,42 @@ export default function AdminReports() {
           </div>
           <p className="text-sm font-medium text-gray-500 mb-1">Receita Concluída</p>
           <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(metrics.completedRevenue)}</h3>
+        </div>
+      </div>
+
+      {/* Delivery vs Pickup Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+            <Bike className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Pedidos Entregues</p>
+            <p className="text-2xl font-bold text-gray-900">{metrics.totalDeliveries}</p>
+            <p className="text-xs text-gray-400">pedidos com entrega</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 shrink-0">
+            <Store className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Retirada na Loja</p>
+            <p className="text-2xl font-bold text-gray-900">{metrics.totalPickups}</p>
+            <p className="text-xs text-gray-400">pedidos retirados</p>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+            <DollarSign className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Total em Taxas de Entrega</p>
+            <p className="text-2xl font-bold text-gray-900">{formatCurrency(metrics.totalDeliveryFee)}</p>
+            <p className="text-xs text-gray-400">arrecadado em entregas</p>
+          </div>
         </div>
       </div>
 
@@ -493,7 +525,11 @@ export default function AdminReports() {
                     <td className="p-4 text-sm text-gray-500 capitalize">
                       {order.paymentMethod === 'credit_card' ? 'Cartão' : order.paymentMethod}
                     </td>
-                    <td className="p-4 text-sm font-bold text-gray-900 text-right">{formatCurrency(order.total)}</td>
+                    <td className={`p-4 text-sm font-bold text-right ${
+                      order.status === 'cancelado' ? 'text-red-600' : 'text-gray-900'
+                    }`}>
+                      {order.status === 'cancelado' ? `- ${formatCurrency(order.total)}` : formatCurrency(order.total)}
+                    </td>
                   </tr>
                 ))
               ) : (

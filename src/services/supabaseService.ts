@@ -186,7 +186,9 @@ class SupabaseService {
       updatedAt: o.updated_at,
       changeFor: o.change_for,
       customerIp: o.customer_ip,
-      deliveryFee: o.delivery_fee
+      deliveryFee: o.delivery_fee,
+      cardSubtype: o.card_subtype,
+      cardFee: o.card_fee
     };
   }
 
@@ -238,6 +240,8 @@ class SupabaseService {
         change_for: orderData.changeFor ?? null,
         delivery_method: orderData.deliveryMethod,
         customer_ip: orderData.customerIp ?? null,
+        card_subtype: orderData.cardSubtype ?? null,
+        card_fee: orderData.cardFee ?? null,
         restaurant_id: restaurantId
       })
       .select()
@@ -494,7 +498,18 @@ class SupabaseService {
       banners: data.banners,
       catalogTitle: data.catalog_title,
       catalogSubtitle: data.catalog_subtitle,
-      socialLinks: data.social_links
+      socialLinks: data.social_links,
+      creditCardFeeEnabled: data.credit_card_fee_enabled,
+      creditCardFeeType: data.credit_card_fee_type,
+      creditCardFeePercent: data.credit_card_fee_percent,
+      debitCardFeeEnabled: data.debit_card_fee_enabled,
+      debitCardFeeType: data.debit_card_fee_type,
+      debitCardFeePercent: data.debit_card_fee_percent,
+      printerWidth: data.printer_width,
+      paymentPixEnabled: data.payment_pix_enabled,
+      paymentCashEnabled: data.payment_cash_enabled,
+      paymentCreditCardEnabled: data.payment_credit_card_enabled,
+      paymentDebitCardEnabled: data.payment_debit_card_enabled
     };
   }
 
@@ -528,6 +543,17 @@ class SupabaseService {
         catalog_title: settings.catalogTitle,
         catalog_subtitle: settings.catalogSubtitle,
         social_links: settings.socialLinks,
+        credit_card_fee_enabled: settings.creditCardFeeEnabled,
+        credit_card_fee_type: settings.creditCardFeeType,
+        credit_card_fee_percent: settings.creditCardFeePercent,
+        debit_card_fee_enabled: settings.debitCardFeeEnabled,
+        debit_card_fee_type: settings.debitCardFeeType,
+        debit_card_fee_percent: settings.debitCardFeePercent,
+        printer_width: settings.printerWidth,
+        payment_pix_enabled: settings.paymentPixEnabled,
+        payment_cash_enabled: settings.paymentCashEnabled,
+        payment_credit_card_enabled: settings.paymentCreditCardEnabled,
+        payment_debit_card_enabled: settings.paymentDebitCardEnabled,
         updated_at: new Date().toISOString(),
         restaurant_id: restaurantId
       };
@@ -567,7 +593,18 @@ class SupabaseService {
       banners: data.banners,
       catalogTitle: data.catalog_title,
       catalogSubtitle: data.catalog_subtitle,
-      socialLinks: data.social_links
+      socialLinks: data.social_links,
+      creditCardFeeEnabled: data.credit_card_fee_enabled,
+      creditCardFeeType: data.credit_card_fee_type,
+      creditCardFeePercent: data.credit_card_fee_percent,
+      debitCardFeeEnabled: data.debit_card_fee_enabled,
+      debitCardFeeType: data.debit_card_fee_type,
+      debitCardFeePercent: data.debit_card_fee_percent,
+      printerWidth: data.printer_width,
+      paymentPixEnabled: data.payment_pix_enabled,
+      paymentCashEnabled: data.payment_cash_enabled,
+      paymentCreditCardEnabled: data.payment_credit_card_enabled,
+      paymentDebitCardEnabled: data.payment_debit_card_enabled
     };
   }
 

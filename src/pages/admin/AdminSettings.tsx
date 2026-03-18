@@ -55,7 +55,19 @@ const settingsSchema = z.object({
     instagram: z.string().nullable().optional(),
     facebook: z.string().nullable().optional(),
     tiktok: z.string().nullable().optional(),
-  }).nullable().optional()
+  }).nullable().optional(),
+
+  creditCardFeeEnabled: z.boolean().optional(),
+  creditCardFeeType: z.enum(['percent', 'fixed']).optional(),
+  creditCardFeePercent: z.coerce.number().min(0).optional(),
+  debitCardFeeEnabled: z.boolean().optional(),
+  debitCardFeeType: z.enum(['percent', 'fixed']).optional(),
+  debitCardFeePercent: z.coerce.number().min(0).optional(),
+  printerWidth: z.enum(['80mm', '58mm', 'A4']).optional(),
+  paymentPixEnabled: z.boolean().optional(),
+  paymentCashEnabled: z.boolean().optional(),
+  paymentCreditCardEnabled: z.boolean().optional(),
+  paymentDebitCardEnabled: z.boolean().optional()
 });
 
 const FileInput = ({ label, onChange, value, id }: { label: string, onChange: (url: string) => void, value?: string, id: string }) => {
@@ -149,6 +161,17 @@ export default function AdminSettings() {
       secondaryColor: '#a78bfa',
       banners: [],
       socialLinks: { instagram: '', facebook: '', tiktok: '' },
+      creditCardFeeEnabled: false,
+      creditCardFeeType: 'percent',
+      creditCardFeePercent: 0,
+      debitCardFeeEnabled: false,
+      debitCardFeeType: 'percent',
+      debitCardFeePercent: 0,
+      printerWidth: '80mm',
+      paymentPixEnabled: true,
+      paymentCashEnabled: true,
+      paymentCreditCardEnabled: true,
+      paymentDebitCardEnabled: true,
     }
   });
 
@@ -486,6 +509,85 @@ export default function AdminSettings() {
                 <Plus className="w-4 h-4" /> Adicionar Bairro
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Payment & Fees */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+          <h3 className="font-bold text-lg border-b border-gray-100 pb-2">Formas de Pagamento</h3>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Generic Methods */}
+            <div className="md:col-span-2 grid md:grid-cols-2 gap-6">
+              <div className="p-4 border border-gray-200 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer font-bold">
+                  <input type="checkbox" {...register('paymentPixEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                  <span>Aceitar Pix?</span>
+                </label>
+              </div>
+              <div className="p-4 border border-gray-200 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer font-bold">
+                  <input type="checkbox" {...register('paymentCashEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                  <span>Aceitar Dinheiro?</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Credit Card */}
+            <div className="p-4 border border-gray-200 rounded-xl space-y-4">
+              <label className="flex items-center gap-2 cursor-pointer font-bold">
+                <input type="checkbox" {...register('paymentCreditCardEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                <span>Aceitar Cartão de Crédito?</span>
+              </label>
+              <div className={watch('paymentCreditCardEnabled') ? 'opacity-100' : 'opacity-50 pointer-events-none'}>
+                <label className="flex items-center gap-2 cursor-pointer font-medium mb-2 text-sm">
+                  <input type="checkbox" {...register('creditCardFeeEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                  <span>Cobrar Taxa de Crédito?</span>
+                </label>
+                <div className="flex gap-2">
+                  <select {...register('creditCardFeeType')} className="flex-1 px-4 py-2 rounded-lg border border-gray-200">
+                    <option value="percent">Porcentagem (%)</option>
+                    <option value="fixed">Valor Fixo (R$)</option>
+                  </select>
+                  <input type="number" step="0.01" {...register('creditCardFeePercent')} className="flex-1 px-4 py-2 rounded-lg border border-gray-200" placeholder="0.00" />
+                </div>
+              </div>
+            </div>
+
+            {/* Debit Card */}
+            <div className="p-4 border border-gray-200 rounded-xl space-y-4">
+              <label className="flex items-center gap-2 cursor-pointer font-bold">
+                <input type="checkbox" {...register('paymentDebitCardEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                <span>Aceitar Cartão de Débito?</span>
+              </label>
+              <div className={watch('paymentDebitCardEnabled') ? 'opacity-100' : 'opacity-50 pointer-events-none'}>
+                <label className="flex items-center gap-2 cursor-pointer font-medium mb-2 text-sm">
+                  <input type="checkbox" {...register('debitCardFeeEnabled')} className="w-4 h-4 text-amazii-primary rounded" />
+                  <span>Cobrar Taxa de Débito?</span>
+                </label>
+                <div className="flex gap-2">
+                  <select {...register('debitCardFeeType')} className="flex-1 px-4 py-2 rounded-lg border border-gray-200">
+                    <option value="percent">Porcentagem (%)</option>
+                    <option value="fixed">Valor Fixo (R$)</option>
+                  </select>
+                  <input type="number" step="0.01" {...register('debitCardFeePercent')} className="flex-1 px-4 py-2 rounded-lg border border-gray-200" placeholder="0.00" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Printer Configuration */}
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+          <h3 className="font-bold text-lg border-b border-gray-100 pb-2">Configurações de Impressão</h3>
+          <div className="md:w-1/2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tamanho da Impressora Térmica</label>
+            <select {...register('printerWidth')} className="w-full px-4 py-2 rounded-lg border border-gray-200 outline-none">
+              <option value="80mm">80mm (Bobina Padrão Grande)</option>
+              <option value="58mm">58mm (Bobina Pequena Menorzinha)</option>
+              <option value="A4">A4 (Folha Comum)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-2">Isso ajustará a nota na hora de imprimir os pedidos.</p>
           </div>
         </div>
 

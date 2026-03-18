@@ -208,6 +208,7 @@ export default function AdminLayout() {
     { icon: Tag, label: 'Cupons', path: `/admin/${tenantSlug}/cupons` },
     { icon: Users, label: 'Leads / CRM', path: `/admin/${tenantSlug}/leads` },
     { icon: MessageCircle, label: 'WhatsApp', path: `/admin/${tenantSlug}/whatsapp` },
+    { icon: MessageCircle, label: 'Mensagens WA', path: `/admin/${tenantSlug}/mensagens-whatsapp` },
     { icon: Settings, label: 'Configurações', path: `/admin/${tenantSlug}/configuracoes` },
   ];
 

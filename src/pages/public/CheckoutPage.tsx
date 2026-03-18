@@ -20,6 +20,7 @@ const checkoutSchema = z.object({
   neighborhood: z.string().optional(),
   observation: z.string().optional(),
   paymentMethod: z.enum(['pix', 'credit_card', 'dinheiro']),
+  cardSubtype: z.enum(['credit', 'debit']).optional(),
   changeFor: z.string().optional(),
 });
 
@@ -44,7 +45,7 @@ export default function CheckoutPage() {
     const trackingUrl = `${window.location.origin}/pedido/${order.id}`;
 
     const paymentLabel = (() => {
-      if (order.paymentMethod === 'credit_card') return 'Cartão de Crédito';
+      if (order.paymentMethod === 'credit_card') return `Cartão de ${order.cardSubtype === 'debit' ? 'Débito' : 'Crédito'}`;
       if (order.paymentMethod === 'dinheiro') {
         if (order.changeFor) {
           const troco = order.changeFor - order.total;
@@ -76,6 +77,7 @@ export default function CheckoutPage() {
     let totalsText = `Subtotal: ${formatCurrency(order.subtotal)}\n`;
     if (order.deliveryFee > 0) totalsText += `Entrega: ${formatCurrency(order.deliveryFee)}\n`;
     if (order.discount > 0)    totalsText += `Desconto: - ${formatCurrency(order.discount)}\n`;
+    if (order.cardFee > 0)     totalsText += `Taxa Cartão: ${formatCurrency(order.cardFee)}\n`;
     totalsText += `*TOTAL: ${formatCurrency(order.total)}*`;
 
     return [
@@ -162,7 +164,34 @@ export default function CheckoutPage() {
 
   const discount = calculateDiscount();
   const deliveryFee = coupon?.type === 'free_shipping' ? 0 : rawFee;
-  const finalTotal = Math.max(0, subtotal() + (deliveryFee ?? 0) - discount);
+  
+  const cardSubtype = watch('cardSubtype');
+  
+  const calculateCardFee = () => {
+    if (paymentMethod !== 'credit_card' || !cardSubtype) return 0;
+    
+    const baseTotal = subtotal() + (deliveryFee ?? 0) - discount;
+    
+    if (cardSubtype === 'credit' && settings?.creditCardFeeEnabled) {
+      if (settings.creditCardFeeType === 'percent') {
+        return baseTotal * ((settings.creditCardFeePercent ?? 0) / 100);
+      } else {
+        return settings.creditCardFeePercent ?? 0;
+      }
+    }
+    
+    if (cardSubtype === 'debit' && settings?.debitCardFeeEnabled) {
+      if (settings.debitCardFeeType === 'percent') {
+        return baseTotal * ((settings.debitCardFeePercent ?? 0) / 100);
+      } else {
+        return settings.debitCardFeePercent ?? 0;
+      }
+    }
+    return 0;
+  };
+
+  const cardFeeAmount = calculateCardFee();
+  const finalTotal = Math.max(0, subtotal() + (deliveryFee ?? 0) - discount + cardFeeAmount);
 
   const onSubmit = async (data: CheckoutForm) => {
     if (loading) return;
@@ -190,6 +219,12 @@ export default function CheckoutPage() {
           setLoading(false);
           return;
         }
+      }
+
+      if (data.paymentMethod === 'credit_card' && !data.cardSubtype) {
+        toast.error('Selecione se o cartão é de Crédito ou Débito');
+        setLoading(false);
+        return;
       }
 
       const changeForValue = data.changeFor ? Number(data.changeFor) : undefined;
@@ -239,6 +274,8 @@ export default function CheckoutPage() {
         discount,
         total: finalTotal,
         paymentMethod: data.paymentMethod,
+        cardSubtype: data.cardSubtype,
+        cardFee: cardFeeAmount > 0 ? cardFeeAmount : undefined,
         changeFor: data.paymentMethod === 'dinheiro' ? changeForValue : undefined,
         deliveryMethod: data.deliveryMethod,
         customerIp: customerIp || undefined,
@@ -433,10 +470,10 @@ export default function CheckoutPage() {
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                { value: 'pix', label: 'Pix', icon: <QrCode className="w-5 h-5" /> },
-                { value: 'credit_card', label: 'Cartão', icon: <CreditCard className="w-5 h-5" /> },
-                { value: 'dinheiro', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" /> },
-              ].map(opt => (
+                { value: 'pix', label: 'Pix', icon: <QrCode className="w-5 h-5" />, enabled: settings?.paymentPixEnabled !== false },
+                { value: 'credit_card', label: 'Cartão', icon: <CreditCard className="w-5 h-5" />, enabled: (settings?.paymentCreditCardEnabled !== false || settings?.paymentDebitCardEnabled !== false) },
+                { value: 'dinheiro', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" />, enabled: settings?.paymentCashEnabled !== false },
+              ].filter(opt => opt.enabled).map(opt => (
                 <label key={opt.value} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition-all text-center ${
                   paymentMethod === opt.value
                     ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
@@ -448,6 +485,34 @@ export default function CheckoutPage() {
                 </label>
               ))}
             </div>
+
+            {paymentMethod === 'credit_card' && (
+              <div className="pt-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Qual tipo de cartão?</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {settings?.paymentCreditCardEnabled !== false && (
+                    <label className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition-all text-center ${
+                      cardSubtype === 'credit'
+                        ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input type="radio" value="credit" {...register('cardSubtype')} className="sr-only" />
+                      <span className="font-medium text-sm">Crédito</span>
+                    </label>
+                  )}
+                  {settings?.paymentDebitCardEnabled !== false && (
+                    <label className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition-all text-center ${
+                      cardSubtype === 'debit'
+                        ? 'border-amazii-primary bg-amazii-muted text-amazii-primary ring-1 ring-amazii-primary'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input type="radio" value="debit" {...register('cardSubtype')} className="sr-only" />
+                      <span className="font-medium text-sm">Débito</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
 
             {paymentMethod === 'dinheiro' && (
               <div className="pt-2">
@@ -483,6 +548,12 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-amazii-green font-medium">
                   <span>Desconto {coupon ? `(${coupon.code})` : ''}</span>
                   <span>- {formatCurrency(discount)}</span>
+                </div>
+              )}
+              {cardFeeAmount > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Taxa Cartão ({cardSubtype === 'credit' ? 'Crédito' : 'Débito'})</span>
+                  <span>{formatCurrency(cardFeeAmount)}</span>
                 </div>
               )}
               <div className="border-t border-gray-100 pt-3 flex justify-between font-bold text-lg text-gray-900">

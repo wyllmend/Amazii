@@ -27,6 +27,7 @@ import AdminCoupons from '@/pages/admin/AdminCoupons';
 import AdminLeads from '@/pages/admin/AdminLeads';
 import AdminWhatsApp from '@/pages/admin/AdminWhatsApp';
 import AdminOrdersHistory from '@/pages/admin/AdminOrdersHistory';
+import AdminWhatsAppMessages from '@/pages/admin/AdminWhatsAppMessages';
 
 // Super Admin Pages
 import SuperAdminLogin from '@/pages/superadmin/SuperAdminLogin';
@@ -76,6 +77,7 @@ function App() {
           <Route path="cupons" element={<AdminCoupons />} />
           <Route path="leads" element={<AdminLeads />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
+          <Route path="mensagens-whatsapp" element={<AdminWhatsAppMessages />} />
           <Route path="configuracoes" element={<AdminSettings />} />
         </Route>
 

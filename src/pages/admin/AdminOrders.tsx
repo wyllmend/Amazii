@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabaseService } from '@/services/supabaseService';
 import { Order, OrderStatus, StoreSettings } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
@@ -48,6 +49,8 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const settingsRef = useRef<StoreSettings | null>(null); // always holds the latest settings
+  const [printWidth, setPrintWidth] = useState<string>('80mm'); // used in print CSS
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
     localStorage.getItem('admin_notifications_enabled') !== 'false'
@@ -56,7 +59,11 @@ export default function AdminOrders() {
   useEffect(() => {
     if (!restaurantId) return;
     fetchOrders();
-    supabaseService.getSettings(restaurantId).then(setSettings);
+    supabaseService.getSettings(restaurantId).then(s => {
+      setSettings(s);
+      settingsRef.current = s;
+      if (s?.printerWidth) setPrintWidth(s.printerWidth);
+    });
     
     // Unlock audio context on first interaction in this view
     const unlockAudio = () => {
@@ -148,7 +155,6 @@ export default function AdminOrders() {
     try {
       const updatedOrder = await supabaseService.updateOrderStatus(id, newStatus);
       
-      // If finalizado/cancelado → remove from active panel
       if (newStatus === 'finalizado' || newStatus === 'cancelado') {
         setOrders(prev => prev.filter(o => o.id !== id));
         setSelectedOrder(null);
@@ -157,6 +163,32 @@ export default function AdminOrders() {
         setOrders(prev => prev.map(o => o.id === id ? updatedOrder : o));
         if (selectedOrder?.id === id) setSelectedOrder(updatedOrder);
         toast.success(`Status atualizado para ${STATUS_LABELS[newStatus]}`);
+        
+        // Auto-print twice when accepting — always reload settings first to get fresh printerWidth
+        if (newStatus === 'aceito') {
+          try {
+            if (restaurantId) {
+              const freshSettings = await supabaseService.getSettings(restaurantId);
+              if (freshSettings) {
+                setSettings(freshSettings);
+                settingsRef.current = freshSettings;
+              }
+            }
+          } catch { /* silently ignore */ }
+          // Read printerWidth directly from ref (synchronous — no re-render needed)
+          const pw = settingsRef.current?.printerWidth || '80mm';
+          console.log('[Impressão] printerWidth =', pw);
+          setPrintWidth(pw);
+          // Small delay to flush the CSS width state before printing
+          setTimeout(() => {
+            console.log('Iniciando impressão 1...');
+            window.print();
+            setTimeout(() => {
+              console.log('Iniciando impressão 2...');
+              window.print();
+            }, 1200);
+          }, 300);
+        }
       }
 
       sendStatusNotification(updatedOrder, newStatus);
@@ -202,7 +234,10 @@ export default function AdminOrders() {
     );
 
   const getPaymentMethodLabel = (order: Order) => {
-    if (order.paymentMethod === 'credit_card') return 'Cartão de Crédito';
+    if (order.paymentMethod === 'credit_card') {
+      const typeLabel = order.cardSubtype === 'debit' ? 'Débito' : 'Crédito';
+      return `Cartão de ${typeLabel}${order.cardFee ? ` (+ ${formatCurrency(order.cardFee)})` : ''}`;
+    }
     if (order.paymentMethod === 'dinheiro') {
       if (order.changeFor) {
         const troco = order.changeFor - order.total;
@@ -380,6 +415,12 @@ export default function AdminOrders() {
                       <span>- {formatCurrency(selectedOrder.discount)}</span>
                     </div>
                   )}
+                  {selectedOrder.cardFee && selectedOrder.cardFee > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Taxa Cartão ({selectedOrder.cardSubtype === 'credit' ? 'Crédito' : 'Débito'}):</span>
+                      <span>{formatCurrency(selectedOrder.cardFee)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-xl font-bold text-gray-900">
                     <span>Total:</span>
                     <span>{formatCurrency(selectedOrder.total)}</span>
@@ -393,13 +434,21 @@ export default function AdminOrders() {
 
             {/* Bottom Actions */}
             <div className="bg-white border-t border-gray-200 p-4">
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-6 gap-2">
+                <button 
+                  onClick={() => handleStatusUpdate(selectedOrder.id, 'aceito')}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  <ThumbsUp className="w-5 h-5" />
+                  <span className="text-xs font-medium">Aceitar</span>
+                </button>
+                
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'em_preparo')}
                   className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors"
                 >
                   <ShoppingCart className="w-5 h-5" />
-                  <span className="text-xs font-medium">Confirmar</span>
+                  <span className="text-xs font-medium">Preparo</span>
                 </button>
 
                 <button 
@@ -445,83 +494,115 @@ export default function AdminOrders() {
         )}
       </div>
 
-      {/* Printable Receipt (Hidden on screen, visible on print) */}
-      {selectedOrder && (
-        <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-4 text-black font-mono text-sm leading-tight">
-          <div className="max-w-[300px] mx-auto">
-            <div className="text-center mb-4 border-b border-black pb-2 border-dashed">
-              <h1 className="font-bold text-lg uppercase">{settings?.storeName || 'Loja'}</h1>
-              <p className="text-xs">Pedido #{selectedOrder.id.slice(0, 8)}</p>
-              <p className="text-xs">{formatDate(selectedOrder.createdAt)}</p>
-            </div>
+      {/* Printable Receipt (Hidden on screen, visible on print via Portal) */}
+      {selectedOrder && createPortal(
+        <div id="printable-receipt-container" className="hidden print:block">
+          <style type="text/css" media="print">
+            {`
+              @page {
+                margin: 0;
+                size: ${printWidth === 'A4' ? 'A4 portrait' : `${printWidth} auto`};
+              }
+              body > * {
+                display: none !important;
+              }
+              #printable-receipt-container {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: ${printWidth === 'A4' ? '210mm' : printWidth} !important;
+                margin: 0;
+                background-color: white;
+              }
+            `}
+          </style>
+          <div 
+            className="p-4 text-black font-mono text-sm leading-tight bg-white mx-auto"
+            style={{ width: printWidth === 'A4' ? '210mm' : printWidth }}
+          >
+            <div className="mx-auto">
+              <div className="text-center mb-4 border-b border-black pb-2 border-dashed">
+                <h1 className="font-bold text-lg uppercase">{settings?.storeName || 'Loja'}</h1>
+                <p className="text-xs">Pedido #{selectedOrder.id.slice(0, 8)}</p>
+                <p className="text-xs">{formatDate(selectedOrder.createdAt)}</p>
+              </div>
 
-            <div className="mb-4 border-b border-black pb-2 border-dashed">
-              <p className="font-bold uppercase mb-1">
-                {selectedOrder.deliveryMethod === 'delivery' ? 'ENTREGA' : 'RETIRADA'}
-              </p>
-              <p className="font-bold">{selectedOrder.customerName}</p>
-              <p>{selectedOrder.customerPhone}</p>
-              {selectedOrder.deliveryMethod === 'delivery' && (
-                <div className="mt-1">
-                  <p>{selectedOrder.address}</p>
-                  <p>{selectedOrder.neighborhood}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-4 border-b border-black pb-2 border-dashed">
-              <p className="font-bold mb-2">ITENS</p>
-              {selectedOrder.items.map((item, idx) => (
-                <div key={idx} className="mb-2">
-                  <div className="flex justify-between">
-                    <span>{item.quantity}x {item.productName}</span>
-                    <span>{formatCurrency(item.total)}</span>
-                  </div>
-                  {item.selectedOptions && item.selectedOptions.length > 0 && (
-                    <div className="pl-4 text-xs mt-1">
-                      {item.selectedOptions.map((opt, i) => (
-                        <div key={i}>+ {opt.quantity > 1 ? `${opt.quantity}x ` : ''}{opt.optionName}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {selectedOrder.observation && (
               <div className="mb-4 border-b border-black pb-2 border-dashed">
-                <p className="font-bold">OBSERVAÇÃO:</p>
-                <p>{selectedOrder.observation}</p>
+                <p className="font-bold uppercase mb-1">
+                  {selectedOrder.deliveryMethod === 'delivery' ? 'ENTREGA' : 'RETIRADA'}
+                </p>
+                <p className="font-bold">{selectedOrder.customerName}</p>
+                <p>{selectedOrder.customerPhone}</p>
+                {selectedOrder.deliveryMethod === 'delivery' && (
+                  <div className="mt-1">
+                    <p>{selectedOrder.address}</p>
+                    <p>{selectedOrder.neighborhood}</p>
+                  </div>
+                )}
               </div>
-            )}
 
-            <div className="space-y-1 mb-4 border-b border-black pb-2 border-dashed">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatCurrency(selectedOrder.subtotal)}</span>
+              <div className="mb-4 border-b border-black pb-2 border-dashed">
+                <p className="font-bold mb-2">ITENS</p>
+                {selectedOrder.items.map((item, idx) => (
+                  <div key={idx} className="mb-2">
+                    <div className="flex justify-between">
+                      <span>{item.quantity}x {item.productName}</span>
+                      <span>{formatCurrency(item.total)}</span>
+                    </div>
+                    {item.selectedOptions && item.selectedOptions.length > 0 && (
+                      <div className="pl-4 text-xs mt-1">
+                        {item.selectedOptions.map((opt, i) => (
+                          <div key={i}>+ {opt.quantity > 1 ? `${opt.quantity}x ` : ''}{opt.optionName}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div className="flex justify-between">
-                <span>Entrega</span>
-                <span>{formatCurrency(selectedOrder.deliveryFee)}</span>
-              </div>
-              {selectedOrder.discount > 0 && (
-                <div className="flex justify-between">
-                  <span>Desconto</span>
-                  <span>- {formatCurrency(selectedOrder.discount)}</span>
+
+              {selectedOrder.observation && (
+                <div className="mb-4 border-b border-black pb-2 border-dashed">
+                  <p className="font-bold">OBSERVAÇÃO:</p>
+                  <p>{selectedOrder.observation}</p>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-lg mt-2">
-                <span>TOTAL</span>
-                <span>{formatCurrency(selectedOrder.total)}</span>
-              </div>
-            </div>
 
-            <div className="text-center text-xs">
-              <p>Pagamento: {getPaymentMethodLabel(selectedOrder)}</p>
-              <p className="mt-2">Obrigado pela preferência!</p>
+              <div className="space-y-1 mb-4 border-b border-black pb-2 border-dashed">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(selectedOrder.subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Entrega</span>
+                  <span>{formatCurrency(selectedOrder.deliveryFee)}</span>
+                </div>
+                {selectedOrder.discount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Desconto</span>
+                    <span>- {formatCurrency(selectedOrder.discount)}</span>
+                  </div>
+                )}
+                {selectedOrder.cardFee && selectedOrder.cardFee > 0 && (
+                  <div className="flex justify-between">
+                    <span>Taxa Cartão</span>
+                    <span>{formatCurrency(selectedOrder.cardFee)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg mt-2">
+                  <span>TOTAL</span>
+                  <span>{formatCurrency(selectedOrder.total)}</span>
+                </div>
+              </div>
+
+              <div className="text-center text-xs">
+                <p>Pagamento: {getPaymentMethodLabel(selectedOrder)}</p>
+                <p className="mt-2">Obrigado pela preferência!</p>
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
