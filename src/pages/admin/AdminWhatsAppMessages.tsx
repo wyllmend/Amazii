@@ -47,15 +47,21 @@ export default function AdminWhatsAppMessages() {
   const loadMessages = async () => {
     try {
       setLoading(true);
-      const settings = await supabaseService.getSettings(restaurantId!);
-      if (settings) {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase
+        .from('store_settings')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (data) {
         setMessages({
-          msg_order_confirmed:    (settings as any).msgOrderConfirmed    || DEFAULT_MESSAGES.msg_order_confirmed,
-          msg_order_preparing:    (settings as any).msgOrderPreparing    || DEFAULT_MESSAGES.msg_order_preparing,
-          msg_order_out_delivery: (settings as any).msgOrderOutDelivery  || DEFAULT_MESSAGES.msg_order_out_delivery,
-          msg_order_ready_pickup: (settings as any).msgOrderReadyPickup  || DEFAULT_MESSAGES.msg_order_ready_pickup,
-          msg_order_finished:     (settings as any).msgOrderFinished     || DEFAULT_MESSAGES.msg_order_finished,
-          msg_order_cancelled:    (settings as any).msgOrderCancelled    || DEFAULT_MESSAGES.msg_order_cancelled,
+          msg_order_confirmed:    data.msg_order_confirmed    || DEFAULT_MESSAGES.msg_order_confirmed,
+          msg_order_preparing:    data.msg_order_preparing    || DEFAULT_MESSAGES.msg_order_preparing,
+          msg_order_out_delivery: data.msg_order_out_delivery || DEFAULT_MESSAGES.msg_order_out_delivery,
+          msg_order_ready_pickup: data.msg_order_ready_pickup || DEFAULT_MESSAGES.msg_order_ready_pickup,
+          msg_order_finished:     data.msg_order_finished     || DEFAULT_MESSAGES.msg_order_finished,
+          msg_order_cancelled:    data.msg_order_cancelled    || DEFAULT_MESSAGES.msg_order_cancelled,
         });
       }
     } catch {
