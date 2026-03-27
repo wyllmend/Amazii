@@ -52,6 +52,7 @@ export default function AdminOrders() {
   const settingsRef = useRef<StoreSettings | null>(null); // always holds the latest settings
   const [printWidth, setPrintWidth] = useState<string>('80mm'); // used in print CSS
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
     localStorage.getItem('admin_notifications_enabled') !== 'false'
   );
@@ -120,24 +121,46 @@ export default function AdminOrders() {
     let message = '';
     const storeName = settings?.storeName || 'nossa loja';
 
+    const applyVariables = (msg: string) => {
+      if (!msg) return '';
+      // We also import formatCurrency at the top, which is available in AdminOrders.tsx
+      return msg
+        .replace('{nome}', order.customerName)
+        .replace('{pedido}', order.id.slice(0, 8))
+        .replace('{total}', formatCurrency(order.total))
+        .replace('{loja}', storeName);
+    };
+
     switch (newStatus) {
       case 'aceito':
-        message = `Olá ${order.customerName}! Seu pedido na ${storeName} foi confirmado! 🍧`;
+        message = settings?.msg_order_confirmed 
+          ? applyVariables(settings.msg_order_confirmed)
+          : `Olá ${order.customerName}! Seu pedido na ${storeName} foi confirmado! 🍧`;
         break;
       case 'em_preparo':
-        message = `Seu pedido na ${storeName} já está em preparo! 👨‍🍳`;
+        message = settings?.msg_order_preparing
+          ? applyVariables(settings.msg_order_preparing)
+          : `Seu pedido na ${storeName} já está em preparo! 👨‍🍳`;
         break;
       case 'saiu_entrega':
-        message = `Ótimas notícias! Seu pedido na ${storeName} saiu para entrega! 🛵`;
+        message = settings?.msg_order_out_delivery
+          ? applyVariables(settings.msg_order_out_delivery)
+          : `Ótimas notícias! Seu pedido na ${storeName} saiu para entrega! 🛵`;
         break;
       case 'pronto_retirada':
-        message = `Seu pedido na ${storeName} está pronto para retirada! 🛍️`;
+        message = settings?.msg_order_ready_pickup
+          ? applyVariables(settings.msg_order_ready_pickup)
+          : `Seu pedido na ${storeName} está pronto para retirada! 🛍️`;
         break;
       case 'finalizado':
-        message = `Pedido finalizado! Esperamos que goste do seu açaí. Avalie-nos quando puder! ⭐`;
+        message = settings?.msg_order_finished
+          ? applyVariables(settings.msg_order_finished)
+          : `Pedido finalizado! Esperamos que goste do seu açaí. Avalie-nos quando puder! ⭐`;
         break;
       case 'cancelado':
-        message = `Infelizmente seu pedido na ${storeName} precisou ser cancelado. Entre em contato para mais detalhes.`;
+        message = settings?.msg_order_cancelled
+          ? applyVariables(settings.msg_order_cancelled)
+          : `Infelizmente seu pedido na ${storeName} precisou ser cancelado. Entre em contato para mais detalhes.`;
         break;
     }
 
@@ -152,6 +175,8 @@ export default function AdminOrders() {
   };
 
   const handleStatusUpdate = async (id: string, newStatus: OrderStatus) => {
+    if (updatingStatusId === id) return;
+    setUpdatingStatusId(id);
     try {
       const updatedOrder = await supabaseService.updateOrderStatus(id, newStatus);
       
@@ -194,6 +219,8 @@ export default function AdminOrders() {
       sendStatusNotification(updatedOrder, newStatus);
     } catch (error) {
       toast.error('Erro ao atualizar status');
+    } finally {
+      setUpdatingStatusId(null);
     }
   };
 
@@ -437,7 +464,8 @@ export default function AdminOrders() {
               <div className="grid grid-cols-6 gap-2">
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'aceito')}
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-indigo-600 hover:text-indigo-700 transition-colors"
+                  disabled={updatingStatusId === selectedOrder.id}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-indigo-600 hover:text-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ThumbsUp className="w-5 h-5" />
                   <span className="text-xs font-medium">Aceitar</span>
@@ -445,7 +473,8 @@ export default function AdminOrders() {
                 
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'em_preparo')}
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors"
+                  disabled={updatingStatusId === selectedOrder.id}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ShoppingCart className="w-5 h-5" />
                   <span className="text-xs font-medium">Preparo</span>
@@ -456,7 +485,8 @@ export default function AdminOrders() {
                     selectedOrder.id, 
                     selectedOrder.deliveryMethod === 'delivery' ? 'saiu_entrega' : 'pronto_retirada'
                   )}
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors"
+                  disabled={updatingStatusId === selectedOrder.id}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckSquare className="w-5 h-5" />
                   <span className="text-xs font-medium">
@@ -468,7 +498,8 @@ export default function AdminOrders() {
 
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'finalizado')}
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors"
+                  disabled={updatingStatusId === selectedOrder.id}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-gray-50 text-gray-600 hover:text-amazii-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ThumbsUp className="w-5 h-5" />
                   <span className="text-xs font-medium">Finalizado</span>
@@ -476,7 +507,8 @@ export default function AdminOrders() {
 
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'cancelado')}
-                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-500 transition-colors"
+                  disabled={updatingStatusId === selectedOrder.id}
+                  className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-5 h-5" />
                   <span className="text-xs font-medium">Cancelar</span>

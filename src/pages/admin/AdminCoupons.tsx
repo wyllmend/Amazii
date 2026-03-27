@@ -29,7 +29,7 @@ export default function AdminCoupons() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CouponForm>({
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<CouponForm>({
     resolver: zodResolver(couponSchema) as any,
     defaultValues: {
       active: true,
@@ -270,9 +270,10 @@ export default function AdminCoupons() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-amazii-primary text-white rounded-lg hover:bg-amazii-dark font-medium"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-amazii-primary text-white rounded-lg hover:bg-amazii-dark font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Salvar
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
                 </button>
               </div>
             </form>

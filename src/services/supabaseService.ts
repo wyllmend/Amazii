@@ -509,7 +509,13 @@ class SupabaseService {
       paymentPixEnabled: data.payment_pix_enabled,
       paymentCashEnabled: data.payment_cash_enabled,
       paymentCreditCardEnabled: data.payment_credit_card_enabled,
-      paymentDebitCardEnabled: data.payment_debit_card_enabled
+      paymentDebitCardEnabled: data.payment_debit_card_enabled,
+      msg_order_confirmed: data.msg_order_confirmed,
+      msg_order_preparing: data.msg_order_preparing,
+      msg_order_out_delivery: data.msg_order_out_delivery,
+      msg_order_ready_pickup: data.msg_order_ready_pickup,
+      msg_order_finished: data.msg_order_finished,
+      msg_order_cancelled: data.msg_order_cancelled
     };
   }
 
@@ -554,6 +560,12 @@ class SupabaseService {
         payment_cash_enabled: settings.paymentCashEnabled,
         payment_credit_card_enabled: settings.paymentCreditCardEnabled,
         payment_debit_card_enabled: settings.paymentDebitCardEnabled,
+        msg_order_confirmed: settings.msg_order_confirmed,
+        msg_order_preparing: settings.msg_order_preparing,
+        msg_order_out_delivery: settings.msg_order_out_delivery,
+        msg_order_ready_pickup: settings.msg_order_ready_pickup,
+        msg_order_finished: settings.msg_order_finished,
+        msg_order_cancelled: settings.msg_order_cancelled,
         updated_at: new Date().toISOString(),
         restaurant_id: restaurantId
       };
@@ -604,7 +616,13 @@ class SupabaseService {
       paymentPixEnabled: data.payment_pix_enabled,
       paymentCashEnabled: data.payment_cash_enabled,
       paymentCreditCardEnabled: data.payment_credit_card_enabled,
-      paymentDebitCardEnabled: data.payment_debit_card_enabled
+      paymentDebitCardEnabled: data.payment_debit_card_enabled,
+      msg_order_confirmed: data.msg_order_confirmed,
+      msg_order_preparing: data.msg_order_preparing,
+      msg_order_out_delivery: data.msg_order_out_delivery,
+      msg_order_ready_pickup: data.msg_order_ready_pickup,
+      msg_order_finished: data.msg_order_finished,
+      msg_order_cancelled: data.msg_order_cancelled
     };
   }
 

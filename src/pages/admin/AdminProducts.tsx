@@ -98,7 +98,7 @@ export default function AdminProducts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  const { register, control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ProductForm>({
+  const { register, control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema) as any,
     defaultValues: {
       featured: false,
@@ -383,9 +383,10 @@ export default function AdminProducts() {
                 </button>
                 <button
                   type="submit"
-                  className="bg-amazii-primary hover:bg-amazii-dark text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                  disabled={isSubmitting}
+                  className="bg-amazii-primary hover:bg-amazii-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Salvar Produto
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar Produto'}
                 </button>
               </div>
             </form>

@@ -150,4 +150,10 @@ export type StoreSettings = {
   paymentCashEnabled?: boolean;
   paymentCreditCardEnabled?: boolean;
   paymentDebitCardEnabled?: boolean;
+  msg_order_confirmed?: string;
+  msg_order_preparing?: string;
+  msg_order_out_delivery?: string;
+  msg_order_ready_pickup?: string;
+  msg_order_finished?: string;
+  msg_order_cancelled?: string;
 };

@@ -23,7 +23,7 @@ export default function AdminCategories() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<CategoryForm>({
+  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<CategoryForm>({
     resolver: zodResolver(categorySchema),
     defaultValues: {
       active: true,
@@ -253,9 +253,10 @@ export default function AdminCategories() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-amazii-primary text-white rounded-lg hover:bg-amazii-dark font-medium"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-amazii-primary text-white rounded-lg hover:bg-amazii-dark font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Salvar
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar'}
                 </button>
               </div>
             </form>
