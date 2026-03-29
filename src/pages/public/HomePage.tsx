@@ -38,12 +38,21 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, [restaurantId]);
 
-  const filteredProducts = products.filter(product => {
-    const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = product.name.toLowerCase().includes(term) || (product.description || '').toLowerCase().includes(term);
-    return matchesCategory && matchesSearch && product.active;
-  });
+  const filteredProducts = products
+    .filter(product => {
+      const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = product.name.toLowerCase().includes(term) || (product.description || '').toLowerCase().includes(term);
+      return matchesCategory && matchesSearch && product.active;
+    })
+    .sort((a, b) => {
+      const indexA = categories.findIndex(c => c.id === a.categoryId);
+      const indexB = categories.findIndex(c => c.id === b.categoryId);
+      // Put products with unknown categories at the end
+      const posA = indexA === -1 ? Infinity : indexA;
+      const posB = indexB === -1 ? Infinity : indexB;
+      return posA - posB;
+    });
 
   const activeBanners = settings?.banners?.filter(b => b.active) ?? [];
 
