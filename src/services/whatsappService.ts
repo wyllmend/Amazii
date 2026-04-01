@@ -40,6 +40,7 @@ type QueueItem = {
   text: string;
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
+  instanceName: string;
 };
 
 let messageQueue: QueueItem[] = [];
@@ -50,14 +51,14 @@ let queueRunning = false;
  * a random delay of 3–7 seconds between each message to simulate
  * a human operator and avoid WhatsApp ban detection.
  */
-async function processQueue(instanceName: string) {
+async function processQueue() {
   if (queueRunning) return;
   queueRunning = true;
 
   while (messageQueue.length > 0) {
     const item = messageQueue.shift()!;
     try {
-      const result = await dispatchMessage(instanceName, item.phone, item.text);
+      const result = await dispatchMessage(item.instanceName, item.phone, item.text);
       item.resolve(result);
     } catch (err) {
       item.reject(err);
@@ -275,17 +276,58 @@ export const whatsappService = {
     }
   },
 
+  async resolveInstanceName(tenantSlug: string): Promise<string> {
+    try {
+      const response = await fetch(`${API_URL}/instance/fetchInstances`, {
+        headers: { 'apikey': API_KEY }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const instances = Array.isArray(data) ? data : (data.instances || []);
+        
+        // Encontra instâncias que pertencem a este tenant
+        const matching = instances.filter((i: any) => {
+          const name = i?.instance?.instanceName || i?.instanceName || i?.name || '';
+          return name === tenantSlug || name.startsWith(`${tenantSlug}-`);
+        });
+
+        if (matching.length > 0) {
+          // Ordena decrescente pelo sufixo (que é um timestamp em base36)
+          matching.sort((a: any, b: any) => {
+            const nameA = a?.instance?.instanceName || a?.instanceName || a?.name || '';
+            const nameB = b?.instance?.instanceName || b?.instanceName || b?.name || '';
+            return nameB.localeCompare(nameA);
+          });
+          
+          const bestName = matching[0]?.instance?.instanceName || matching[0]?.instanceName || matching[0]?.name;
+          if (bestName) return bestName;
+        }
+      }
+    } catch (error) {
+      console.warn('[WhatsApp] Erro ao buscar instâncias, usando fallback:', error);
+    }
+    
+    // Fallback para o valor no localStorage ou o próprio tenantSlug
+    return getActiveInstance(tenantSlug);
+  },
+
   /**
    * Queues a message for delivery with anti-ban protection:
    * - Messages are sent one at a time with 3–7 s intervals.
    * - Each message is preceded by a "composing…" typing indicator.
-   *
-   * Safe to call concurrently for bursts of orders.
    */
-  sendMessage(instanceName: string, phone: string, text: string): Promise<any> {
+  async sendMessage(tenantSlugOrInstanceName: string, phone: string, text: string): Promise<any> {
+    // Resolvemos automaticamente o nome correto da instância (em caso de recriação)
+    let finalInstanceName = tenantSlugOrInstanceName;
+    try {
+      finalInstanceName = await this.resolveInstanceName(tenantSlugOrInstanceName);
+    } catch (e) {
+      // continua com o valor original em caso de erro extremo
+    }
+
     return new Promise((resolve, reject) => {
-      messageQueue.push({ phone, text, resolve, reject });
-      processQueue(instanceName); // No-op if already running
+      messageQueue.push({ phone, text, resolve, reject, instanceName: finalInstanceName });
+      processQueue(); // Inicia o processamento no background
     });
   },
 
