@@ -269,6 +269,18 @@ class SupabaseService {
     return this.mapOrder(data);
   }
 
+  async updateOrderItems(id: string, items: OrderItem[], subtotal: number, discount: number, total: number): Promise<Order> {
+    const { data, error } = await supabase
+      .from('orders')
+      .update({ items, subtotal, discount, total, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return this.mapOrder(data);
+  }
+
   subscribeToOrders(restaurantId: string, callback: (order: Order, event: 'INSERT' | 'UPDATE' | 'DELETE') => void) {
     this.orderListeners.push(callback);
 

@@ -203,7 +203,7 @@ export default function AdminLayout() {
     { icon: Package, label: 'Produtos', path: `/admin/${tenantSlug}/produtos` },
     { icon: Tag, label: 'Categorias', path: `/admin/${tenantSlug}/categorias` },
     { icon: ShoppingBag, label: 'Pedidos', path: `/admin/${tenantSlug}/pedidos` },
-    { icon: ShoppingBag, label: 'Histórico', path: `/admin/${tenantSlug}/historico-pedidos` },
+    { icon: History, label: 'Histórico', path: `/admin/${tenantSlug}/historico-pedidos` },
     { icon: BarChart3, label: 'Relatórios', path: `/admin/${tenantSlug}/relatorios` },
     { icon: Tag, label: 'Cupons', path: `/admin/${tenantSlug}/cupons` },
     { icon: Users, label: 'Leads / CRM', path: `/admin/${tenantSlug}/leads` },

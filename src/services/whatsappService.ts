@@ -2,6 +2,15 @@ const API_URL = import.meta.env.VITE_WHATSAPP_API_URL;
 const API_KEY = import.meta.env.VITE_WHATSAPP_API_KEY;
 const INSTANCE = import.meta.env.VITE_WHATSAPP_INSTANCE;
 
+/**
+ * Returns the active WhatsApp instance name for a given tenant slug.
+ * Reads from localStorage (set by AdminWhatsApp when a new instance is created),
+ * falling back to the tenantSlug itself.
+ */
+export function getActiveInstance(tenantSlug: string): string {
+  return localStorage.getItem(`wa_instance_${tenantSlug}`) || tenantSlug;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Anti-ban utility helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +99,7 @@ async function dispatchMessage(instanceName: string, phone: string, text: string
     headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
     body: JSON.stringify({
       number: cleanPhone,
-      text,
+      text: text,
       delay: 1200,
       linkPreview: false
     })
@@ -108,29 +117,51 @@ async function dispatchMessage(instanceName: string, phone: string, text: string
 // Anti-ban instance settings
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Applies recommended anti-ban settings to the Evolution API instance.
- * Should be called once after each successful connection/reconnection.
- */
+export type InstanceSettings = {
+  rejectCall: boolean;
+  groupsIgnore: boolean;
+  alwaysOnline: boolean;
+  readMessages: boolean;
+  syncFullHistory: boolean;
+  readStatus: boolean;
+};
+
+export const DEFAULT_INSTANCE_SETTINGS: InstanceSettings = {
+  rejectCall: true,
+  groupsIgnore: true,
+  alwaysOnline: true,
+  readMessages: false,
+  syncFullHistory: false,
+  readStatus: false,
+};
+
 async function applyAntiBanSettings(instanceName: string) {
+  await applyInstanceSettings(instanceName, DEFAULT_INSTANCE_SETTINGS);
+}
+
+async function applyInstanceSettings(instanceName: string, settings: InstanceSettings) {
   try {
-    await fetch(`${API_URL}/instance/settings/${instanceName}`, {
+    const res = await fetch(`${API_URL}/instance/settings/${instanceName}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
       body: JSON.stringify({
-        rejectCall: true,       // Automatically reject incoming calls
-        msgCall: 'Não atendo chamadas por este número. Por favor, envie uma mensagem.',
-        groupsIgnore: true,     // Ignore messages from groups
-        alwaysOnline: true,     // Keep presence as "online"
-        readMessages: false,    // Don't auto-read messages (avoids double-tick pressure)
-        syncFullHistory: false
+        rejectCall: settings.rejectCall,
+        msgCall: 'Não atendo chamadas por este número. Por favor, envie uma mensagem de texto.',
+        groupsIgnore: settings.groupsIgnore,
+        alwaysOnline: settings.alwaysOnline,
+        readMessages: settings.readMessages,
+        syncFullHistory: settings.syncFullHistory,
+        readStatus: settings.readStatus,
       })
     });
-    console.log(`[WhatsApp] Anti-ban settings applied successfully for ${instanceName}.`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log(`[WhatsApp] Settings aplicados para ${instanceName}.`);
   } catch (err) {
-    console.warn(`[WhatsApp] Could not apply anti-ban settings for ${instanceName}:`, err);
+    console.warn(`[WhatsApp] Não foi possível aplicar settings para ${instanceName}:`, err);
+    throw err;
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public service API
@@ -228,6 +259,13 @@ export const whatsappService = {
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        
+        // If the instance is already closed/errored on the server, we still want the UI to consider it logged out.
+        if (response.status === 500 || response.status === 400 || response.status === 404) {
+          console.log(`[WhatsApp] Ignorando erro de logout para ${instanceName} pois a instância já está morta.`, errorData);
+          return { success: true };
+        }
+        
         throw new Error(errorData.message || `API Error: ${response.status}`);
       }
       return response.json();
@@ -296,5 +334,27 @@ export const whatsappService = {
       console.error(`[WhatsApp] Find Messages Error (${instanceName}):`, error);
       throw error;
     }
-  }
+  },
+
+  async getInstanceSettings(instanceName: string): Promise<InstanceSettings> {
+    const response = await fetch(`${API_URL}/instance/settings/${instanceName}`, {
+      headers: { 'apikey': API_KEY }
+    });
+    if (!response.ok) throw new Error(`API Error: ${response.status}`);
+    const data = await response.json();
+    // Evolution API returns the settings nested under the instance name
+    const s = data?.[instanceName] || data?.Setting || data || {};
+    return {
+      rejectCall: !!s.rejectCall,
+      groupsIgnore: !!s.groupsIgnore,
+      alwaysOnline: !!s.alwaysOnline,
+      readMessages: !!s.readMessages,
+      syncFullHistory: !!s.syncFullHistory,
+      readStatus: !!s.readStatus,
+    };
+  },
+
+  async updateInstanceSettings(instanceName: string, settings: InstanceSettings): Promise<void> {
+    await applyInstanceSettings(instanceName, settings);
+  },
 };

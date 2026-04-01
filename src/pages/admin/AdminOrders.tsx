@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabaseService } from '@/services/supabaseService';
-import { Order, OrderStatus, StoreSettings } from '@/services/types';
+import { Order, OrderItem, OrderStatus, StoreSettings, Product } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { 
-  Search, MessageCircle, Phone, MapPin, User, Store, 
-  Printer, Bell, ShoppingCart, CheckSquare, Clock, Bike, ThumbsUp, Trash2,
-  History, Eraser
+  Search,
+  Printer, Bell, ShoppingCart, CheckSquare, ThumbsUp, Trash2,
+  History, Eraser, Pencil, X, Plus, Minus, Save, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { whatsappService } from '@/services/whatsappService';
@@ -56,6 +56,13 @@ export default function AdminOrders() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => 
     localStorage.getItem('admin_notifications_enabled') !== 'false'
   );
+
+  // ── Edit Order Modal ────────────────────────────────────────────────────────
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  const [editProducts, setEditProducts] = useState<Product[]>([]);
+  const [addProductId, setAddProductId] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -251,6 +258,78 @@ export default function AdminOrders() {
     }
   };
 
+  // ── Edit Order handlers ──────────────────────────────────────────────────────
+  const openEditModal = async (order: Order) => {
+    setEditingOrder(order);
+    setEditItems(order.items.map(i => ({ ...i })));
+    setAddProductId('');
+    if (restaurantId) {
+      try {
+        const prods = await supabaseService.getProducts(restaurantId);
+        setEditProducts(prods.filter(p => p.active));
+      } catch { /* silently ignore */ }
+    }
+  };
+
+  const handleEditQty = (idx: number, delta: number) => {
+    setEditItems(prev => {
+      const updated = [...prev];
+      const newQty = updated[idx].quantity + delta;
+      if (newQty <= 0) return updated.filter((_, i) => i !== idx);
+      updated[idx] = { ...updated[idx], quantity: newQty, total: updated[idx].price * newQty };
+      return updated;
+    });
+  };
+
+  const handleEditRemove = (idx: number) => {
+    setEditItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleEditAddProduct = () => {
+    const product = editProducts.find(p => p.id === addProductId);
+    if (!product) return;
+    // If already in list (no options), just increment qty
+    const existingIdx = editItems.findIndex(i => i.productId === product.id && i.selectedOptions.length === 0);
+    if (existingIdx >= 0) {
+      setEditItems(prev => {
+        const updated = [...prev];
+        const q = updated[existingIdx].quantity + 1;
+        updated[existingIdx] = { ...updated[existingIdx], quantity: q, total: updated[existingIdx].price * q };
+        return updated;
+      });
+    } else {
+      setEditItems(prev => [...prev, {
+        productId: product.id,
+        productName: product.name,
+        quantity: 1,
+        price: product.price,
+        total: product.price,
+        selectedOptions: [],
+      }]);
+    }
+    setAddProductId('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder || editItems.length === 0) return;
+    setEditSaving(true);
+    try {
+      const newSubtotal = editItems.reduce((s, i) => s + i.total, 0);
+      const newTotal = newSubtotal + editingOrder.deliveryFee - (editingOrder.discount || 0);
+      const updated = await supabaseService.updateOrderItems(
+        editingOrder.id, editItems, newSubtotal, editingOrder.discount, newTotal
+      );
+      setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+      if (selectedOrder?.id === updated.id) setSelectedOrder(updated);
+      toast.success('Pedido atualizado com sucesso!');
+      setEditingOrder(null);
+    } catch {
+      toast.error('Erro ao salvar pedido. Tente novamente.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
 
   // Filter: active statuses + not dismissed + search term
   const filteredOrders = orders
@@ -371,6 +450,13 @@ export default function AdminOrders() {
                 <Printer className="w-4 h-4" />
                 Imprimir pedido
               </button>
+              <button
+                onClick={() => openEditModal(selectedOrder)}
+                className="flex items-center gap-2 text-amazii-primary hover:text-amazii-dark text-sm font-semibold px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors"
+              >
+                <Pencil className="w-4 h-4" />
+                Editar Pedido
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -461,7 +547,7 @@ export default function AdminOrders() {
 
             {/* Bottom Actions */}
             <div className="bg-white border-t border-gray-200 p-4">
-              <div className="grid grid-cols-6 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <button 
                   onClick={() => handleStatusUpdate(selectedOrder.id, 'aceito')}
                   disabled={updatingStatusId === selectedOrder.id}
@@ -636,6 +722,141 @@ export default function AdminOrders() {
         </div>,
         document.body
       )}
+
+      {/* ── Edit Order Modal ───────────────────────────────────────────────── */}
+      {editingOrder && (() => {
+        const editSubtotal = editItems.reduce((s, i) => s + i.total, 0);
+        const editTotal = editSubtotal + editingOrder.deliveryFee - (editingOrder.discount || 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={() => setEditingOrder(null)}>
+            <div
+              className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[92vh] flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Editar Pedido #{editingOrder.id.slice(0, 8)}</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">{editingOrder.customerName} · {editingOrder.customerPhone}</p>
+                </div>
+                <button onClick={() => setEditingOrder(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Items List */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-2">
+                {editItems.length === 0 && (
+                  <p className="text-center text-gray-400 py-8 text-sm">Nenhum item. Adicione produtos abaixo.</p>
+                )}
+                {editItems.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{item.productName}</p>
+                      {item.selectedOptions.length > 0 && (
+                        <p className="text-xs text-gray-400 truncate">{item.selectedOptions.map(o => o.optionName).join(', ')}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(item.price)} cada</p>
+                    </div>
+                    {/* Qty controls */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => handleEditQty(idx, -1)}
+                        className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-500 transition-colors"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="w-6 text-center font-bold text-sm text-gray-900">{item.quantity}</span>
+                      <button
+                        onClick={() => handleEditQty(idx, 1)}
+                        className="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center hover:bg-green-50 hover:border-green-200 hover:text-green-600 text-gray-500 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="w-16 text-right font-bold text-gray-900 text-sm flex-shrink-0">
+                      {formatCurrency(item.total)}
+                    </div>
+                    <button
+                      onClick={() => handleEditRemove(idx)}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add Product */}
+                <div className="border border-dashed border-gray-200 rounded-xl p-3 mt-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Adicionar produto</p>
+                  <div className="flex gap-2">
+                    <select
+                      value={addProductId}
+                      onChange={e => setAddProductId(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amazii-primary/20 bg-white"
+                    >
+                      <option value="">Selecione um produto...</option>
+                      {editProducts.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.price)}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleEditAddProduct}
+                      disabled={!addProductId}
+                      className="px-4 py-2 bg-amazii-primary text-white rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-amazii-dark transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer: Totals + Save */}
+              <div className="p-5 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex-shrink-0">
+                <div className="space-y-1 mb-4 text-sm">
+                  <div className="flex justify-between text-gray-500">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(editSubtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-500">
+                    <span>Entrega</span>
+                    <span>{formatCurrency(editingOrder.deliveryFee)}</span>
+                  </div>
+                  {editingOrder.discount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Desconto</span>
+                      <span>– {formatCurrency(editingOrder.discount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-base text-gray-900 pt-1.5 border-t border-gray-200">
+                    <span>Total</span>
+                    <span>{formatCurrency(editTotal)}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setEditingOrder(null)}
+                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={editSaving || editItems.length === 0}
+                    className="flex-1 py-3 rounded-xl bg-amazii-primary text-white font-semibold hover:bg-amazii-dark disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    {editSaving
+                      ? <><Loader2 className="w-4 h-4 animate-spin" />Salvando...</>
+                      : <><Save className="w-4 h-4" />Salvar Pedido</>
+                    }
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { supabaseService } from '@/services/supabaseService';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useTenantStore } from '@/store/tenantStore';
 import { useEffect } from 'react';

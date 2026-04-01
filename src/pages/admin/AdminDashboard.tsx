@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   LineChart, Line 
 } from 'recharts';
-import { DollarSign, ShoppingBag, Users, TrendingUp, Loader2, Bell } from 'lucide-react';
+import { DollarSign, ShoppingBag, Users, TrendingUp, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTenantStore } from '@/store/tenantStore';
 

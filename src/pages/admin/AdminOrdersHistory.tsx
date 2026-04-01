@@ -40,7 +40,7 @@ export default function AdminOrdersHistory() {
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterType>('all');
   const [dateFilter, setDateFilter]     = useState<DateFilter>('30d');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [restoringId, setRestoringId]   = useState<string | null>(null);
 
   useEffect(() => {
     fetchHistory();
@@ -58,6 +58,28 @@ export default function AdminOrdersHistory() {
       toast.error('Erro ao carregar histórico');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRestore = async (order: Order, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (restoringId) return;
+    setRestoringId(order.id);
+    try {
+      await supabaseService.updateOrderStatus(order.id, 'aceito');
+      setOrders(prev => prev.filter(o => o.id !== order.id));
+      toast.success(`Pedido #${order.id.slice(0, 8)} restaurado para o painel!`, {
+        description: 'O pedido voltou como "Confirmado" no painel de pedidos ativos.',
+        duration: 5000,
+        action: {
+          label: 'Ver Painel',
+          onClick: () => window.location.href = `/admin/${tenantSlug}/pedidos`,
+        },
+      });
+    } catch {
+      toast.error('Erro ao restaurar pedido. Tente novamente.');
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -183,19 +205,19 @@ export default function AdminOrdersHistory() {
                 <th className="px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pagamento</th>
                 <th className="px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
                 <th className="px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Carregando...</td></tr>
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">Carregando...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">Nenhum pedido encontrado</td></tr>
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400">Nenhum pedido encontrado</td></tr>
               ) : (
                 filtered.map(order => (
                   <tr
                     key={order.id}
-                    onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="hover:bg-gray-50 transition-colors"
                   >
                     <td className="px-5 py-3.5 font-mono text-xs text-gray-500">#{order.id.slice(0, 8)}</td>
                     <td className="px-5 py-3.5">
@@ -212,6 +234,36 @@ export default function AdminOrdersHistory() {
                       <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold border', STATUS_COLORS[order.status])}>
                         {STATUS_LABELS[order.status]}
                       </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <button
+                        onClick={(e) => handleRestore(order, e)}
+                        disabled={restoringId === order.id}
+                        title="Devolver este pedido para o painel de pedidos ativos"
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                          restoringId === order.id
+                            ? 'opacity-60 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:border-amber-300 active:scale-95'
+                        )}
+                      >
+                        {restoringId === order.id ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                            Restaurando...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+                            </svg>
+                            Restaurar
+                          </>
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))
