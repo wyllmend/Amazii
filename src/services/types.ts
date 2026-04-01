@@ -133,7 +133,9 @@ export type StoreSettings = {
   secondaryColor?: string; 
   banners?: Banner[]; 
   catalogTitle?: string; 
+  catalogTitleColor?: string;
   catalogSubtitle?: string; 
+  catalogSubtitleColor?: string;
   socialLinks?: {
     instagram?: string;
     facebook?: string;

@@ -42,7 +42,9 @@ const settingsSchema = z.object({
   primaryColor: z.string().nullable().optional(),
   secondaryColor: z.string().nullable().optional(),
   catalogTitle: z.string().nullable().optional(),
+  catalogTitleColor: z.string().nullable().optional(),
   catalogSubtitle: z.string().nullable().optional(),
+  catalogSubtitleColor: z.string().nullable().optional(),
   banners: z.array(z.object({
     id: z.string(),
     imageUrlMobile: z.string().min(1, 'URL da foto mobile obrigatória'),
@@ -159,6 +161,8 @@ export default function AdminSettings() {
       },
       primaryColor: '#7c3aed',
       secondaryColor: '#a78bfa',
+      catalogTitleColor: '#111827',
+      catalogSubtitleColor: '#6B7280',
       banners: [],
       socialLinks: { instagram: '', facebook: '', tiktok: '' },
       creditCardFeeEnabled: false,
@@ -371,6 +375,40 @@ export default function AdminSettings() {
                 />
               </div>
             </div>
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cor do Título</label>
+              <div className="flex gap-2">
+                <input 
+                  type="color" 
+                  value={watch('catalogTitleColor') || '#111827'} 
+                  onChange={(e) => setValue('catalogTitleColor', e.target.value)}
+                  className="h-10 w-10 rounded cursor-pointer border-0 p-0 overflow-hidden shrink-0" 
+                />
+                <input 
+                  {...register('catalogTitleColor')} 
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 outline-none uppercase" 
+                  placeholder="#111827" 
+                />
+              </div>
+            </div>
+            
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cor do Subtítulo</label>
+              <div className="flex gap-2">
+                <input 
+                  type="color" 
+                  value={watch('catalogSubtitleColor') || '#6B7280'} 
+                  onChange={(e) => setValue('catalogSubtitleColor', e.target.value)}
+                  className="h-10 w-10 rounded cursor-pointer border-0 p-0 overflow-hidden shrink-0" 
+                />
+                <input 
+                  {...register('catalogSubtitleColor')} 
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 outline-none uppercase" 
+                  placeholder="#6B7280" 
+                />
+              </div>
+            </div>
+
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Título do Catálogo</label>
               <input {...register('catalogTitle')} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 outline-none" placeholder="O melhor açaí da cidade" />

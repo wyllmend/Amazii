@@ -92,21 +92,30 @@ export default function HomePage() {
 
       {/* Search Bar */}
       <div
-        className="rounded-2xl p-4 sm:p-6 text-white"
-        style={{ background: 'linear-gradient(135deg, var(--amazii-primary), var(--amazii-secondary))' }}
+        className="rounded-2xl p-4 sm:p-6 bg-white border border-gray-100 shadow-sm"
       >
         {settings?.catalogTitle && (
-          <h1 className="text-xl sm:text-2xl font-bold mb-1">{settings.catalogTitle}</h1>
+          <h1 
+            className="text-xl sm:text-2xl font-bold mb-1 text-gray-900" 
+            style={{ color: settings.catalogTitleColor || undefined }}
+          >
+            {settings.catalogTitle}
+          </h1>
         )}
         {settings?.catalogSubtitle && (
-          <p className="text-white/80 text-sm mb-3 hidden sm:block">{settings.catalogSubtitle}</p>
+          <p 
+            className="text-gray-500 text-sm mb-3 hidden sm:block"
+            style={{ color: settings.catalogSubtitleColor || undefined }}
+          >
+            {settings.catalogSubtitle}
+          </p>
         )}
-        <div className="relative">
+        <div className="relative mt-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="search"
             placeholder="Buscar produtos..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-white/40"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl text-gray-900 text-sm bg-gray-50 border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amazii-primary focus:border-amazii-primary transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
