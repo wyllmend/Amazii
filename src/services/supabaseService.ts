@@ -727,14 +727,57 @@ class SupabaseService {
   }
 
   // --- Upload ---
+  private compressImage(file: File, maxWidth = 1000, quality = 0.8): Promise<File> {
+    return new Promise((resolve) => {
+      // Ignore non-images or GIFs (which can't be compressed via simple canvas without losing animation)
+      if (!file.type.startsWith('image/') || file.type === 'image/gif') return resolve(file);
+
+      const img = new Image();
+      const objUrl = URL.createObjectURL(file);
+
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        let { width, height } = img;
+        
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(file);
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(file);
+          const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+          resolve(new File([blob], newName, { type: 'image/webp', lastModified: Date.now() }));
+        }, 'image/webp', quality);
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(file);
+      };
+
+      img.src = objUrl;
+    });
+  }
+
   async uploadFile(file: File): Promise<string> {
-    const fileExt = file.name.split('.').pop();
+    const compressedFile = await this.compressImage(file);
+    const fileExt = compressedFile.name.split('.').pop() || 'webp';
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('amazii-assets')
-      .upload(filePath, file);
+      .upload(filePath, compressedFile);
 
     if (uploadError) throw uploadError;
 
