@@ -16,7 +16,9 @@ const checkoutSchema = z.object({
   name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   phone: z.string().min(10, 'Telefone inválido'),
   deliveryMethod: z.enum(['delivery', 'pickup']),
-  address: z.string().optional(),
+  street: z.string().optional(),
+  addressNumber: z.string().optional(),
+  addressComplement: z.string().optional(),
   neighborhood: z.string().optional(),
   observation: z.string().optional(),
   paymentMethod: z.enum(['pix', 'credit_card', 'dinheiro']),
@@ -204,8 +206,13 @@ export default function CheckoutPage() {
       }
 
       if (data.deliveryMethod === 'delivery') {
-        if (!data.address || data.address.length < 5) {
-          toast.error('Informe o endereço completo para entrega');
+        if (!data.street || data.street.length < 3) {
+          toast.error('Informe a rua para entrega');
+          setLoading(false);
+          return;
+        }
+        if (!data.addressNumber) {
+          toast.error('Informe o número para entrega');
           setLoading(false);
           return;
         }
@@ -255,10 +262,14 @@ export default function CheckoutPage() {
         }
       }
 
+      const fullAddress = data.deliveryMethod === 'delivery' 
+        ? `${data.street}, ${data.addressNumber}${data.addressComplement ? ` - ${data.addressComplement}` : ''}`
+        : undefined;
+
       const order = await supabaseService.createOrder({
         customerName: data.name,
         customerPhone: normalizedPhone,
-        address: data.deliveryMethod === 'delivery' ? (data.address ?? '') : undefined,
+        address: fullAddress,
         neighborhood: data.deliveryMethod === 'delivery' ? (data.neighborhood ?? '') : undefined,
         observation: data.observation ?? '',
         items: items.map(i => ({
@@ -422,15 +433,35 @@ export default function CheckoutPage() {
                   {errors.neighborhood && <p className="text-red-500 text-xs mt-1">{errors.neighborhood.message}</p>}
                 </div>
 
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rua</label>
+                    <input
+                      {...register('street')}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                      placeholder="Nome da sua rua"
+                      autoComplete="street-address"
+                    />
+                    {errors.street && <p className="text-red-500 text-xs mt-1">{errors.street.message}</p>}
+                  </div>
+                  <div className="col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Número</label>
+                    <input
+                      {...register('addressNumber')}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
+                      placeholder="Nº"
+                    />
+                    {errors.addressNumber && <p className="text-red-500 text-xs mt-1">{errors.addressNumber.message}</p>}
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço Completo</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Complemento (Opcional)</label>
                   <input
-                    {...register('address')}
+                    {...register('addressComplement')}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amazii-primary/20 focus:border-amazii-primary outline-none transition-all text-base"
-                    placeholder="Rua, Número, Complemento"
-                    autoComplete="street-address"
+                    placeholder="Apto, Bloco, Casa 2, Ponto de ref..."
                   />
-                  {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address.message}</p>}
                 </div>
               </div>
             )}

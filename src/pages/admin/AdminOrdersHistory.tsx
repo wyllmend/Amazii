@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabaseService } from '@/services/supabaseService';
 import { Order, OrderStatus } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
