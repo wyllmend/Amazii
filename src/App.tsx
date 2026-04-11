@@ -27,6 +27,7 @@ import AdminLeads from '@/pages/admin/AdminLeads';
 import AdminWhatsApp from '@/pages/admin/AdminWhatsApp';
 import AdminOrdersHistory from '@/pages/admin/AdminOrdersHistory';
 import AdminWhatsAppMessages from '@/pages/admin/AdminWhatsAppMessages';
+import AdminDeliveryDriver from '@/pages/admin/AdminDeliveryDriver';
 
 // Super Admin Pages
 import SuperAdminLogin from '@/pages/superadmin/SuperAdminLogin';
@@ -77,6 +78,7 @@ function App() {
           <Route path="leads" element={<AdminLeads />} />
           <Route path="whatsapp" element={<AdminWhatsApp />} />
           <Route path="mensagens-whatsapp" element={<AdminWhatsAppMessages />} />
+          <Route path="entregador-fixo" element={<AdminDeliveryDriver />} />
           <Route path="configuracoes" element={<AdminSettings />} />
         </Route>
 

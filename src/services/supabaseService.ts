@@ -478,6 +478,43 @@ class SupabaseService {
     if (error) throw error;
   }
 
+  // --- Delivery Drivers ---
+  async getDeliveryDrivers(restaurantId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('delivery_drivers')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  }
+
+  async createDeliveryDriver(driver: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('delivery_drivers')
+      .insert(driver)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async updateDeliveryDriver(id: string, updates: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('delivery_drivers')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async deleteDeliveryDriver(id: string): Promise<void> {
+    const { error } = await supabase.from('delivery_drivers').delete().eq('id', id);
+    if (error) throw error;
+  }
+
   // --- Settings ---
   async getSettings(restaurantId: string): Promise<StoreSettings | null> {
     const { data, error } = await supabase
@@ -529,7 +566,10 @@ class SupabaseService {
       msg_order_out_delivery: data.msg_order_out_delivery,
       msg_order_ready_pickup: data.msg_order_ready_pickup,
       msg_order_finished: data.msg_order_finished,
-      msg_order_cancelled: data.msg_order_cancelled
+      msg_order_cancelled: data.msg_order_cancelled,
+      msg_order_delivery_driver: data.msg_order_delivery_driver,
+      msg_order_received: data.msg_order_received,
+      msg_lead_inactive_3days: data.msg_lead_inactive_3days
     };
   }
 
@@ -580,8 +620,10 @@ class SupabaseService {
         msg_order_preparing: settings.msg_order_preparing,
         msg_order_out_delivery: settings.msg_order_out_delivery,
         msg_order_ready_pickup: settings.msg_order_ready_pickup,
-        msg_order_finished: settings.msg_order_finished,
         msg_order_cancelled: settings.msg_order_cancelled,
+        msg_order_delivery_driver: settings.msg_order_delivery_driver,
+        msg_order_received: settings.msg_order_received,
+        msg_lead_inactive_3days: settings.msg_lead_inactive_3days,
         updated_at: new Date().toISOString(),
         restaurant_id: restaurantId
       };
@@ -640,7 +682,10 @@ class SupabaseService {
       msg_order_out_delivery: data.msg_order_out_delivery,
       msg_order_ready_pickup: data.msg_order_ready_pickup,
       msg_order_finished: data.msg_order_finished,
-      msg_order_cancelled: data.msg_order_cancelled
+      msg_order_cancelled: data.msg_order_cancelled,
+      msg_order_delivery_driver: data.msg_order_delivery_driver,
+      msg_order_received: data.msg_order_received,
+      msg_lead_inactive_3days: data.msg_lead_inactive_3days
     };
   }
 
@@ -727,10 +772,13 @@ class SupabaseService {
   }
 
   // --- Upload ---
-  private compressImage(file: File, maxWidth = 1000, quality = 0.8): Promise<File> {
+  private compressImage(file: File, maxWidth = 1000, quality = 0.85): Promise<File> {
     return new Promise((resolve) => {
-      // Ignore non-images or GIFs (which can't be compressed via simple canvas without losing animation)
-      if (!file.type.startsWith('image/') || file.type === 'image/gif') return resolve(file);
+      // Android/iOS sometimes drop the file type on direct camera uploads. We check extensions too.
+      const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|heic)$/i.test(file.name);
+      if (!isImage || file.type === 'image/gif' || /\.gif$/i.test(file.name)) {
+        return resolve(file);
+      }
 
       const img = new Image();
       const objUrl = URL.createObjectURL(file);
@@ -751,18 +799,29 @@ class SupabaseService {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve(file);
         
+        const isPng = file.type === 'image/png' || /\.png$/i.test(file.name);
+        
+        if (!isPng) {
+          // Fill white background for JPEGs to avoid transparent pixels turning black
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+        }
+        
         ctx.drawImage(img, 0, 0, width, height);
+        
+        const outType = isPng ? 'image/png' : 'image/jpeg';
+        const newExt = isPng ? '.png' : '.jpg';
         
         canvas.toBlob((blob) => {
           if (!blob) return resolve(file);
-          const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
-          resolve(new File([blob], newName, { type: 'image/webp', lastModified: Date.now() }));
-        }, 'image/webp', quality);
+          const newName = file.name.replace(/\.[^/.]+$/, "") + newExt;
+          resolve(new File([blob], newName, { type: outType, lastModified: Date.now() }));
+        }, outType, quality);
       };
       
       img.onerror = () => {
         URL.revokeObjectURL(objUrl);
-        resolve(file);
+        resolve(file); // fallback to original file if format isn't readable by canvas
       };
 
       img.src = objUrl;
@@ -771,7 +830,7 @@ class SupabaseService {
 
   async uploadFile(file: File): Promise<string> {
     const compressedFile = await this.compressImage(file);
-    const fileExt = compressedFile.name.split('.').pop() || 'webp';
+    const fileExt = compressedFile.name.split('.').pop() || 'jpg';
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 

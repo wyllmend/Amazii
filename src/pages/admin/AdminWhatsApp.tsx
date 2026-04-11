@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, Smartphone, RefreshCw, CheckCircle2, AlertCircle, Loader2, Send, MessageSquare, Settings2, AlertTriangle, Save } from 'lucide-react';
+import { QrCode, Smartphone, RefreshCw, CheckCircle2, AlertCircle, Loader2, Send, MessageSquare, Settings2, AlertTriangle, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { whatsappService, InstanceSettings, DEFAULT_INSTANCE_SETTINGS } from '@/services/whatsappService';
@@ -38,6 +38,9 @@ export default function AdminWhatsApp() {
   const [instanceSettings, setInstanceSettings] = useState<InstanceSettings>(DEFAULT_INSTANCE_SETTINGS);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [allInstances, setAllInstances] = useState<{ name: string; state: string }[]>([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
+  const [deletingInstance, setDeletingInstance] = useState<string | null>(null);
 
   // Connection status polling
   useEffect(() => {
@@ -57,6 +60,22 @@ export default function AdminWhatsApp() {
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, [instanceName]);
+
+  // Load the list of all instances for this tenant
+  const loadInstances = async () => {
+    setLoadingInstances(true);
+    try {
+      const list = await whatsappService.listInstances(tenantSlug);
+      setAllInstances(list);
+    } finally {
+      setLoadingInstances(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInstances();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantSlug]);
 
   // Load instance settings when connected
   useEffect(() => {
@@ -117,6 +136,7 @@ export default function AdminWhatsApp() {
         setIsBroken(false);
         setQrCode(data.base64);
         toast.success(`Nova instância criada! Escaneie o QR Code.`);
+        loadInstances(); // refresh list
       } else {
         toast.error('Não foi possível criar nova instância');
       }
@@ -124,6 +144,42 @@ export default function AdminWhatsApp() {
       toast.error(error.message || 'Erro ao criar nova instância');
     } finally {
       setCreatingNew(false);
+    }
+  };
+
+  /**
+   * Force-deletes an instance from the Evolution API.
+   * Even if the API returns 400/500 (zombie instance), we:
+   *  1. Remove it from the local list so the UI stays clean.
+   *  2. Clear the active instance in localStorage if it matches.
+   */
+  const handleForceDelete = async (targetInstance: string) => {
+    if (!window.confirm(`Deletar a instância "${targetInstance}"?\n\nEsta ação irá remover o registro da API, mesmo que a sessão já esteja morta.`)) return;
+    setDeletingInstance(targetInstance);
+    try {
+      const result = await whatsappService.deleteInstance(targetInstance, true);
+      // Always clean local state first — the UI must never get stuck
+      setAllInstances(prev => prev.filter(i => i.name !== targetInstance));
+      if (targetInstance === instanceName) {
+        // The active instance was deleted — reset to the slug default
+        const fallback = tenantSlug;
+        saveStoredInstance(tenantSlug, fallback);
+        setInstanceName(fallback);
+        setIsConnected(false);
+        setIsBroken(false);
+        setQrCode(null);
+        localStorage.removeItem(`wa_instance_${tenantSlug}`);
+      }
+      if (result.forced) {
+        toast.warning(`Instância deletada com force (a API retornou erro, mas o registro foi limpo localmente).`);
+      } else {
+        toast.success(`Instância "${targetInstance}" deletada com sucesso.`);
+      }
+    } catch (error: any) {
+      // Should not reach here in force mode, but handle gracefully
+      toast.error(error.message || 'Erro inesperado ao deletar instância');
+    } finally {
+      setDeletingInstance(null);
     }
   };
 
@@ -200,6 +256,83 @@ export default function AdminWhatsApp() {
           </button>
         </div>
       )}
+
+      {/* ── Instance Manager Panel ─────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-bold text-base flex items-center gap-2 text-gray-800">
+            <Settings2 className="w-4 h-4 text-amazii-primary" />
+            Gerenciar Instâncias
+          </h3>
+          <button
+            onClick={loadInstances}
+            disabled={loadingInstances}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-amazii-primary transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5', loadingInstances && 'animate-spin')} />
+            Atualizar
+          </button>
+        </div>
+
+        <div className="px-6 py-4">
+          {loadingInstances ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin text-amazii-primary" />
+            </div>
+          ) : allInstances.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">Nenhuma instância encontrada para este tenant.</p>
+          ) : (
+            <ul className="divide-y divide-gray-50 -mx-6 px-6">
+              {allInstances.map(inst => {
+                const isActive = inst.name === instanceName;
+                const stateColor =
+                  inst.state === 'open' ? 'bg-green-100 text-green-700'
+                  : inst.state === 'connecting' ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-red-100 text-red-600';
+                const stateLabel =
+                  inst.state === 'open' ? 'Conectada'
+                  : inst.state === 'connecting' ? 'Conectando'
+                  : inst.state === 'close' ? 'Fechada'
+                  : inst.state;
+
+                return (
+                  <li key={inst.name} className="flex items-center gap-3 py-3">
+                    {/* Active badge */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs text-gray-800 truncate max-w-[240px]" title={inst.name}>
+                          {inst.name}
+                        </span>
+                        {isActive && (
+                          <span className="text-[10px] bg-amazii-primary/10 text-amazii-primary px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                            Ativa
+                          </span>
+                        )}
+                      </div>
+                      <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium mt-0.5 inline-block', stateColor)}>
+                        {stateLabel}
+                      </span>
+                    </div>
+
+                    {/* Force Delete button */}
+                    <button
+                      onClick={() => handleForceDelete(inst.name)}
+                      disabled={deletingInstance === inst.name}
+                      title="Deletar instância (força)"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 shrink-0"
+                    >
+                      {deletingInstance === inst.name
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Trash2 className="w-3.5 h-3.5" />}
+                      {deletingInstance === inst.name ? 'Deletando...' : 'Force Delete'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
 
       {/* Connection Card */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">

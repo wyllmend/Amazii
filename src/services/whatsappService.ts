@@ -32,6 +32,39 @@ const normalisePhone = (phone: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Error parsing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extracts a human-readable string from any Evolution API error payload.
+ * The API may return `message` as a string, an array of strings, or a nested
+ * object — all of which would produce "[object Object]" if coerced naively.
+ */
+function extractErrorMessage(data: any, statusCode?: number): string {
+  if (!data) return `Erro na API${statusCode ? ` (${statusCode})` : ''}`;
+
+  // Normalize: dig into common wrapper shapes first
+  const payload = data?.response ?? data;
+
+  if (typeof payload.message === 'string' && payload.message.length > 0) {
+    return payload.message;
+  }
+  if (Array.isArray(payload.message)) {
+    const flat = payload.message
+      .map((m: any) => (typeof m === 'string' ? m : JSON.stringify(m)))
+      .join(', ');
+    return flat || `Erro na API (${statusCode ?? 'desconhecido'})`;
+  }
+  if (typeof payload.message === 'object' && payload.message !== null) {
+    return JSON.stringify(payload.message);
+  }
+  if (typeof payload.error === 'string') return payload.error;
+  if (typeof data.message === 'string') return data.message;
+
+  return `Erro na API${statusCode ? ` (${statusCode})` : ''}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Message queue
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -108,7 +141,7 @@ async function dispatchMessage(instanceName: string, phone: string, text: string
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `API Error: ${response.status}`);
+    throw new Error(extractErrorMessage(errorData, response.status));
   }
 
   return response.json();
@@ -197,7 +230,7 @@ export const whatsappService = {
 
         if (!createRes.ok) {
           const createErr = await createRes.json().catch(() => ({}));
-          throw new Error(createErr.message || `Erro ao criar instância vazia: ${createRes.status}`);
+          throw new Error(extractErrorMessage(createErr, createRes.status));
         }
 
         const createData = await createRes.json();
@@ -220,7 +253,7 @@ export const whatsappService = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `API Error: ${response.status}`);
+        throw new Error(extractErrorMessage(errorData, response.status));
       }
       
       const data = await response.json();
@@ -267,7 +300,7 @@ export const whatsappService = {
           return { success: true };
         }
         
-        throw new Error(errorData.message || `API Error: ${response.status}`);
+        throw new Error(extractErrorMessage(errorData, response.status));
       }
       return response.json();
     } catch (error: any) {
@@ -342,7 +375,7 @@ export const whatsappService = {
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `API Error: ${response.status}`);
+        throw new Error(extractErrorMessage(errorData, response.status));
       }
       return response.json();
     } catch (error: any) {
@@ -369,7 +402,7 @@ export const whatsappService = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `API Error: ${response.status}`);
+        throw new Error(extractErrorMessage(errorData, response.status));
       }
       return response.json();
     } catch (error: any) {
@@ -399,4 +432,76 @@ export const whatsappService = {
   async updateInstanceSettings(instanceName: string, settings: InstanceSettings): Promise<void> {
     await applyInstanceSettings(instanceName, settings);
   },
+
+  /**
+   * Lists all Evolution API instances that belong to a given tenant slug.
+   * Uses the /instance/fetchInstances endpoint (v1 compatible).
+   */
+  async listInstances(tenantSlug: string): Promise<{ name: string; state: string }[]> {
+    try {
+      const response = await fetch(`${API_URL}/instance/fetchInstances`, {
+        headers: { 'apikey': API_KEY }
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      const instances: any[] = Array.isArray(data) ? data : (data.instances || []);
+      return instances
+        .filter((i: any) => {
+          const name: string = i?.instance?.instanceName || i?.instanceName || i?.name || '';
+          return name === tenantSlug || name.startsWith(`${tenantSlug}-`);
+        })
+        .map((i: any) => ({
+          name: i?.instance?.instanceName || i?.instanceName || i?.name || '',
+          state: i?.instance?.state || i?.state || 'unknown',
+        }))
+        .filter(i => i.name !== '');
+    } catch (err) {
+      console.warn('[WhatsApp] Erro ao listar instâncias:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Deletes an instance from the Evolution API (v1: DELETE /instance/delete/{name}).
+   *
+   * When `force` is true the method:
+   * 1. Attempts a graceful logout — ignores any error.
+   * 2. Calls the delete endpoint — treats 4xx/5xx as success so the UI
+   *    can always be cleaned up, even for dead/zombie instances.
+   */
+  async deleteInstance(instanceName: string, force = false): Promise<{ success: boolean; forced?: boolean }> {
+    // Step 1 — graceful logout (best-effort; never blocks deletion)
+    try {
+      await fetch(`${API_URL}/instance/logout/${instanceName}`, {
+        method: 'DELETE',
+        headers: { 'apikey': API_KEY },
+      });
+    } catch (logoutErr) {
+      console.warn(`[WhatsApp] Logout falhou para ${instanceName} (ignorado no force delete):`, logoutErr);
+      if (!force) throw logoutErr;
+    }
+
+    // Step 2 — delete the instance record
+    const response = await fetch(`${API_URL}/instance/delete/${instanceName}`, {
+      method: 'DELETE',
+      headers: { 'apikey': API_KEY },
+    });
+
+    if (!response.ok) {
+      if (force) {
+        // Force mode: log the error but report success so the UI cleans up
+        const errBody = await response.json().catch(() => ({}));
+        console.warn(
+          `[WhatsApp] Force delete ignorou erro ${response.status} para ${instanceName}:`,
+          errBody
+        );
+        return { success: true, forced: true };
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(errorData, response.status));
+    }
+
+    return response.json().catch(() => ({ success: true }));
+  },
 };
+

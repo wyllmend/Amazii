@@ -4,12 +4,16 @@ import { useTenantStore } from '@/store/tenantStore';
 import { toast } from 'sonner';
 import { MessageCircle, Save, RefreshCw, Info } from 'lucide-react';
 
-// Available dynamic variables
 const VARIABLES = [
   { key: '{nome}', desc: 'Nome do cliente' },
   { key: '{pedido}', desc: 'Número do pedido' },
   { key: '{total}', desc: 'Valor total do pedido' },
   { key: '{loja}', desc: 'Nome da loja' },
+  { key: '{endereco}', desc: 'Endereço de entrega' },
+  { key: '{frete}', desc: 'Valor do frete' },
+  { key: '{rota}', desc: 'Link do GPS/Rota' },
+  { key: '{telefone}', desc: 'Telefone do cliente' },
+  { key: '{resumo_pedido}', desc: 'Itens do pedido' },
 ];
 
 const DEFAULT_MESSAGES = {
@@ -19,6 +23,9 @@ const DEFAULT_MESSAGES = {
   msg_order_ready_pickup: '🏪 Pedido #{pedido} está *pronto para retirada*! Pode vir buscar.',
   msg_order_finished: '🎉 Pedido #{pedido} *finalizado*! Obrigado pela preferência, {nome}! Volte sempre 😊',
   msg_order_cancelled: '❌ Seu pedido #{pedido} foi *cancelado*. Em caso de dúvidas, entre em contato.',
+  msg_order_delivery_driver: 'Novo pedido disponível! 📦\nCliente: {nome} - {telefone}\nEndereço: {endereco}\nValor Frete: {frete}\nLink da Rota: {rota}\nItens:\n{resumo_pedido}',
+  msg_order_received: '✅ *Pedido recebido em {loja}!*\nNº {pedido}\n\n{resumo_pedido}',
+  msg_lead_inactive_3days: 'E aí {nome}, bateu aquela fome de novo? 😄\nNosso cardápio tá aqui: {loja}',
 };
 
 const MESSAGE_LABELS: Record<string, { label: string; color: string; emoji: string }> = {
@@ -28,6 +35,9 @@ const MESSAGE_LABELS: Record<string, { label: string; color: string; emoji: stri
   msg_order_ready_pickup: { label: 'Pronto para Retirada',         color: 'bg-violet-50 border-violet-200',  emoji: '🏪' },
   msg_order_finished:     { label: 'Pedido Finalizado',            color: 'bg-green-50 border-green-200',    emoji: '🎉' },
   msg_order_cancelled:    { label: 'Pedido Cancelado',             color: 'bg-red-50 border-red-200',        emoji: '❌' },
+  msg_order_delivery_driver:{ label: 'Aviso para o Entregador Fixo', color: 'bg-teal-50 border-teal-200',      emoji: '🛵' },
+  msg_order_received:     { label: 'Recebido pelo Sistema (Novo)', color: 'bg-yellow-50 border-yellow-200',  emoji: '📥' },
+  msg_lead_inactive_3days:{ label: 'Cliente Inativo (3 dias sem pedir)', color: 'bg-orange-50 border-orange-200', emoji: '❤️' },
 };
 
 type Messages = Record<string, string>;
@@ -62,6 +72,9 @@ export default function AdminWhatsAppMessages() {
           msg_order_ready_pickup: data.msg_order_ready_pickup || DEFAULT_MESSAGES.msg_order_ready_pickup,
           msg_order_finished:     data.msg_order_finished     || DEFAULT_MESSAGES.msg_order_finished,
           msg_order_cancelled:    data.msg_order_cancelled    || DEFAULT_MESSAGES.msg_order_cancelled,
+          msg_order_delivery_driver: data.msg_order_delivery_driver || DEFAULT_MESSAGES.msg_order_delivery_driver,
+          msg_order_received:     data.msg_order_received     || DEFAULT_MESSAGES.msg_order_received,
+          msg_lead_inactive_3days: data.msg_lead_inactive_3days || DEFAULT_MESSAGES.msg_lead_inactive_3days,
         });
       }
     } catch {
@@ -85,6 +98,9 @@ export default function AdminWhatsAppMessages() {
           msg_order_ready_pickup: messages.msg_order_ready_pickup,
           msg_order_finished:     messages.msg_order_finished,
           msg_order_cancelled:    messages.msg_order_cancelled,
+          msg_order_delivery_driver: messages.msg_order_delivery_driver,
+          msg_order_received:     messages.msg_order_received,
+          msg_lead_inactive_3days: messages.msg_lead_inactive_3days,
           updated_at: new Date().toISOString(),
         })
         .eq('restaurant_id', restaurantId);
@@ -201,7 +217,10 @@ export default function AdminWhatsAppMessages() {
                   .replace('{nome}', 'João')
                   .replace('{pedido}', 'ABC12345')
                   .replace('{total}', 'R$ 45,90')
-                  .replace('{loja}', 'Minha Loja')}
+                  .replace('{loja}', 'Minha Loja')
+                  .replace('{endereco}', 'Rua X, 123, Bairro Centro')
+                  .replace('{frete}', 'R$ 5,00')
+                  .replace('{rota}', 'https://maps.google.com/?q=...')}
               </span>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingBag, Settings, LogOut,
-  Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban, History
+  Menu, X, Tag, Users, MessageCircle, BarChart3, Kanban, History, Truck
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
@@ -209,6 +209,7 @@ export default function AdminLayout() {
     { icon: Users, label: 'Leads / CRM', path: `/admin/${tenantSlug}/leads` },
     { icon: MessageCircle, label: 'WhatsApp', path: `/admin/${tenantSlug}/whatsapp` },
     { icon: MessageCircle, label: 'Mensagens WA', path: `/admin/${tenantSlug}/mensagens-whatsapp` },
+    { icon: Truck, label: 'Entregador Fixo', path: `/admin/${tenantSlug}/entregador-fixo` },
     { icon: Settings, label: 'Configurações', path: `/admin/${tenantSlug}/configuracoes` },
   ];
 

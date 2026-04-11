@@ -112,9 +112,14 @@ export default function AdminLeads() {
   const handleBlast = async () => {
     const catalogUrl = window.location.origin;
 
-    // Mensagem que parece humana: texto + link do catálogo
-    const buildMessage = (name: string) =>
-      `E aí ${name}, bateu aquela fome de novo? 😄\nNosso cardápio tá aqui: ${catalogUrl}`;
+    const getMessageTemplate = async () => {
+      try {
+        const settings = await supabaseService.getSettings(restaurantId!);
+        return settings?.msg_lead_inactive_3days || `E aí {nome}, bateu aquela fome de novo? 😄\nNosso cardápio tá aqui: {loja}`;
+      } catch {
+        return `E aí {nome}, bateu aquela fome de novo? 😄\nNosso cardápio tá aqui: {loja}`;
+      }
+    };
 
     const targets = saudadeLeads;
     if (targets.length === 0) {
@@ -131,6 +136,15 @@ export default function AdminLeads() {
     setBlastState('running');
     setBlastProgress({ sent: 0, total: targets.length, current: targets[0]?.customerName || '' });
 
+    const templateRaw = await getMessageTemplate();
+
+    const buildMessageStr = (name: string) => {
+      let finalMsg = templateRaw;
+      finalMsg = finalMsg.replace(/{nome}/g, name);
+      finalMsg = finalMsg.replace(/{loja}/g, catalogUrl);
+      return finalMsg;
+    };
+
     const sentPhones: string[] = [];
     let sent = 0;
     for (const lead of targets) {
@@ -138,7 +152,7 @@ export default function AdminLeads() {
 
       setBlastProgress(p => ({ ...p, current: lead.customerName }));
       try {
-        await whatsappService.sendMessage(tenantSlug, lead.customerPhone, buildMessage(lead.customerName));
+        await whatsappService.sendMessage(tenantSlug, lead.customerPhone, buildMessageStr(lead.customerName));
         sent++;
         sentPhones.push(lead.customerPhone.replace(/\D/g, ''));
         setBlastProgress(p => ({ ...p, sent }));

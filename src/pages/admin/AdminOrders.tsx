@@ -130,12 +130,32 @@ export default function AdminOrders() {
 
     const applyVariables = (msg: string) => {
       if (!msg) return '';
-      // We also import formatCurrency at the top, which is available in AdminOrders.tsx
+      // Create components for address and maps
+      const addressString = [order.address, order.neighborhood].filter(Boolean).join(', ') || 'Endereço não informado';
+      const mapsQuery = encodeURIComponent(addressString);
+      
+      const itemsText = order.items
+        .map((item: any) => {
+          let line = `${item.quantity}x ${item.productName} — ${formatCurrency(item.total)}`;
+          if (item.selectedOptions?.length > 0) {
+            const opts = item.selectedOptions
+              .map((o: any) => `  + ${o.quantity > 1 ? `${o.quantity}x ` : ''}${o.optionName}`)
+              .join('\n');
+            line += `\n${opts}`;
+          }
+          return line;
+        }).join('\n');
+      
       return msg
         .replace('{nome}', order.customerName)
+        .replace('{telefone}', order.customerPhone)
         .replace('{pedido}', order.id.slice(0, 8))
         .replace('{total}', formatCurrency(order.total))
-        .replace('{loja}', storeName);
+        .replace('{loja}', storeName)
+        .replace('{endereco}', addressString)
+        .replace('{frete}', formatCurrency(order.deliveryFee))
+        .replace('{rota}', `https://maps.google.com/?q=${mapsQuery}`)
+        .replace('{resumo_pedido}', itemsText);
     };
 
     switch (newStatus) {
@@ -177,6 +197,27 @@ export default function AdminOrders() {
         console.log(`WhatsApp notification sent for order ${order.id}`);
       } catch (error) {
         console.error('Failed to send WhatsApp notification:', error);
+      }
+    }
+
+    // --- Notificação para o Entregador Fixo ---
+    if (newStatus === 'aceito' && order.deliveryMethod === 'delivery' && restaurantId) {
+      try {
+        const drivers = await supabaseService.getDeliveryDrivers(restaurantId);
+        const activeDrivers = drivers.filter(d => d.active);
+        
+        if (activeDrivers.length > 0) {
+          const defaultDriverMsg = 'Novo pedido disponível! 📦\nEndereço: {endereco}\nValor Frete: {frete}\nLink da Rota: {rota}';
+          const driverMsgTemplate = settings?.msg_order_delivery_driver || defaultDriverMsg;
+          const finalDriverMsg = applyVariables(driverMsgTemplate);
+
+          for (const driver of activeDrivers) {
+            await whatsappService.sendMessage(tenantSlug, driver.phone, finalDriverMsg);
+            console.log(`WhatsApp driver notification sent to ${driver.name} - ${driver.phone}`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to notify drivers:', error);
       }
     }
   };

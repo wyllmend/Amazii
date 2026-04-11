@@ -158,4 +158,16 @@ export type StoreSettings = {
   msg_order_ready_pickup?: string;
   msg_order_finished?: string;
   msg_order_cancelled?: string;
+  msg_order_delivery_driver?: string;
+  msg_order_received?: string;
+  msg_lead_inactive_3days?: string;
+};
+
+export type DeliveryDriver = {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  phone: string;
+  active: boolean;
+  created_at: string;
 };

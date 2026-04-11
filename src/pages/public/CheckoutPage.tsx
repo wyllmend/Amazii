@@ -82,10 +82,7 @@ export default function CheckoutPage() {
     if (order.cardFee > 0)     totalsText += `Taxa Cartão: ${formatCurrency(order.cardFee)}\n`;
     totalsText += `*TOTAL: ${formatCurrency(order.total)}*`;
 
-    return [
-      `✅ *Pedido recebido em ${storeName}!*`,
-      `Nº ${order.id.slice(0, 8).toUpperCase()}`,
-      '',
+    const receiptParts = [
       deliveryLine,
       '',
       '*Itens:*',
@@ -97,9 +94,23 @@ export default function CheckoutPage() {
       '',
       `📦 Acompanhe seu pedido:`,
       trackingUrl,
-    ]
-      .filter(l => l !== null)
-      .join('\n');
+    ].filter(l => l !== null).join('\n');
+
+    let template = settings?.msg_order_received || '✅ *Pedido recebido em {loja}!*\nNº {pedido}\n\n{resumo_pedido}';
+    
+    if (template.includes('{resumo_pedido}')) {
+       template = template.replace('{resumo_pedido}', receiptParts);
+    } else {
+       template += `\n\n${receiptParts}`;
+    }
+
+    return template
+        .replace(/{nome}/g, order.customerName || '')
+        .replace(/{pedido}/g, order.id.slice(0, 8).toUpperCase())
+        .replace(/{total}/g, formatCurrency(order.total))
+        .replace(/{loja}/g, storeName)
+        .replace(/{endereco}/g, order.address || '')
+        .replace(/{frete}/g, formatCurrency(order.deliveryFee || 0));
   };
 
   useEffect(() => {
