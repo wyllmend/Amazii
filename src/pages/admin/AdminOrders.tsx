@@ -50,6 +50,7 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const settingsRef = useRef<StoreSettings | null>(null); // always holds the latest settings
+  const ordersRef = useRef<Order[]>([]); // stable ref for subscription callback reads
   const [printWidth, setPrintWidth] = useState<string>('80mm'); // used in print CSS
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
@@ -64,9 +65,16 @@ export default function AdminOrders() {
   const [addProductId, setAddProductId] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  // ── Keep ordersRef in sync (used inside subscription callbacks) ─────────
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+
+
+
+  // ── Main data-loading useEffect ──────────────────────────────────────────
   useEffect(() => {
     if (!restaurantId) return;
     fetchOrders();
+
     supabaseService.getSettings(restaurantId).then(s => {
       setSettings(s);
       settingsRef.current = s;
@@ -91,7 +99,18 @@ export default function AdminOrders() {
           return [order, ...prev];
         });
       } else if (event === 'UPDATE') {
+        // Read previous state from ref (safe outside state updater)
+        const existing = ordersRef.current.find(o => o.id === order.id);
+        const isNewDriverClaim = !existing?.driverName && !!order.driverName;
+
+        if (isNewDriverClaim) {
+          toast.success(`🛵 ${order.driverName} aceitou a entrega do pedido ${order.id.slice(0, 6)}!`, {
+            duration: 6000,
+          });
+        }
+
         setOrders(prev => prev.map(o => o.id === order.id ? order : o));
+        if (selectedOrder?.id === order.id) setSelectedOrder(order);
       } else if (event === 'DELETE') {
         setOrders(prev => prev.filter(o => o.id !== order.id));
       }
@@ -205,15 +224,34 @@ export default function AdminOrders() {
       try {
         const drivers = await supabaseService.getDeliveryDrivers(restaurantId);
         const activeDrivers = drivers.filter(d => d.active);
-        
-        if (activeDrivers.length > 0) {
-          const defaultDriverMsg = 'Novo pedido disponível! 📦\nEndereço: {endereco}\nValor Frete: {frete}\nLink da Rota: {rota}';
-          const driverMsgTemplate = settings?.msg_order_delivery_driver || defaultDriverMsg;
-          const finalDriverMsg = applyVariables(driverMsgTemplate);
 
-          for (const driver of activeDrivers) {
-            await whatsappService.sendMessage(tenantSlug, driver.phone, finalDriverMsg);
-            console.log(`WhatsApp driver notification sent to ${driver.name} - ${driver.phone}`);
+        if (activeDrivers.length > 0) {
+          const queueMode = settingsRef.current?.driverQueueMode ?? false;
+
+          if (queueMode) {
+            // ── Modo Fila: envia link competitivo ──────────────────────────
+            const claimUrl = `https://elevare-menu.vercel.app/${tenantSlug}/aceitar/${order.id}`;
+            const queueMsg =
+              `🚀 NOVA ENTREGA DISPONÍVEL!\n` +
+              `📍 Bairro: ${order.neighborhood || 'Verificar no link'}\n` +
+              `💰 Taxa: ${formatCurrency(order.deliveryFee)}\n` +
+              `🔗 Clique para garantir: ${claimUrl}\n` +
+              `(Atenção: O endereço completo só aparece após o aceite no link)`;
+
+            for (const driver of activeDrivers) {
+              await whatsappService.sendMessage(tenantSlug, driver.phone, queueMsg);
+              console.log(`[Fila] Link de aceite enviado para ${driver.name} - ${driver.phone}`);
+            }
+          } else {
+            // ── Modo Direto: envia endereço completo imediatamente ─────────
+            const defaultDriverMsg = 'Novo pedido disponível! 📦\nEndereço: {endereco}\nValor Frete: {frete}\nLink da Rota: {rota}';
+            const driverMsgTemplate = settingsRef.current?.msg_order_delivery_driver || defaultDriverMsg;
+            const finalDriverMsg = applyVariables(driverMsgTemplate);
+
+            for (const driver of activeDrivers) {
+              await whatsappService.sendMessage(tenantSlug, driver.phone, finalDriverMsg);
+              console.log(`[Direto] Notificação enviada para ${driver.name} - ${driver.phone}`);
+            }
           }
         }
       } catch (error) {
@@ -437,9 +475,11 @@ export default function AdminOrders() {
               onClick={() => setSelectedOrder(order)}
               className={cn(
                 "bg-white p-4 rounded-lg border shadow-sm cursor-pointer transition-all hover:shadow-md relative overflow-hidden",
-                selectedOrder?.id === order.id 
-                  ? "border-l-4 border-l-red-500 border-y-gray-200 border-r-gray-200" 
-                  : "border-gray-100 border-l-4 border-l-transparent"
+                order.driverName
+                  ? "border-l-4 border-l-blue-500 border-y-blue-100 border-r-blue-100 bg-blue-50/30"
+                  : selectedOrder?.id === order.id 
+                    ? "border-l-4 border-l-red-500 border-y-gray-200 border-r-gray-200" 
+                    : "border-gray-100 border-l-4 border-l-transparent"
               )}
             >
               <div className="flex justify-between items-start mb-2">
@@ -463,6 +503,13 @@ export default function AdminOrders() {
               <div className="text-sm text-gray-500">
                 {order.customerPhone}
               </div>
+
+              {/* Driver badge — only shown in queue mode after a driver claims */}
+              {order.driverName && (
+                <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-lg px-2 py-1 w-fit">
+                  🛵 {order.driverName}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -525,6 +572,15 @@ export default function AdminOrders() {
                     <p className="text-gray-600">
                       {selectedOrder.address} | {selectedOrder.neighborhood}
                     </p>
+                  )}
+                  {selectedOrder.driverName && (
+                    <div className="mt-2 flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                      <span className="text-lg">🛵</span>
+                      <div>
+                        <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide">Entregador (Modo Fila)</p>
+                        <p className="font-bold text-blue-800">{selectedOrder.driverName}</p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

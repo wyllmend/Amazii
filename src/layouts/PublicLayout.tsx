@@ -18,7 +18,6 @@ export default function PublicLayout() {
   const { settings } = useSettings();
   const cartItems = useCartStore((state) => state.items);
   const itemCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const location = useLocation();
   const [isStoreOpen, setIsStoreOpen] = useState(true);
 
   useEffect(() => {
@@ -57,6 +56,14 @@ export default function PublicLayout() {
     }, 60000);
     return () => clearInterval(interval);
   }, [restaurantId]);
+
+  const location = useLocation();
+  const isDriverClaim = location.pathname.includes('/aceitar/');
+
+  // Driver claim is a standalone fullscreen page — skip tenant loading entirely
+  if (isDriverClaim) {
+    return <Outlet />;
+  }
 
   if (tenantLoading) {
     return (

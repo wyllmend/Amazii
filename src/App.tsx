@@ -13,6 +13,7 @@ import ProductPage from '@/pages/public/ProductPage';
 import CartPage from '@/pages/public/CartPage';
 import CheckoutPage from '@/pages/public/CheckoutPage';
 import OrderPage from '@/pages/public/OrderPage';
+import DriverClaimPage from '@/pages/public/DriverClaimPage';
 
 // Admin Pages
 import AdminLoginPage from '@/pages/admin/AdminLoginPage';
@@ -61,6 +62,8 @@ function App() {
           <Route path="carrinho" element={<CartPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
           <Route path="pedido/:id" element={<OrderPage />} />
+          {/* Driver claim — nested so tenantSlug is resolved, but rendered without PublicLayout chrome */}
+          <Route path="aceitar/:orderId" element={<DriverClaimPage />} />
         </Route>
 
         {/* Admin Routes */}

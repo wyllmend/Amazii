@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabaseService } from '@/services/supabaseService';
 import { useTenantStore } from '@/store/tenantStore';
-import { DeliveryDriver } from '@/services/types';
+import { DeliveryDriver, StoreSettings } from '@/services/types';
 import { toast } from 'sonner';
-import { Truck, Plus, Trash2, Edit2, Play, Square, Loader2 } from 'lucide-react';
+import { Truck, Plus, Trash2, Edit2, Play, Square, Loader2, ToggleLeft, ToggleRight, Users, Zap } from 'lucide-react';
 
 export default function AdminDeliveryDriver() {
   const restaurantId = useTenantStore((s) => s.restaurantId);
@@ -13,10 +13,33 @@ export default function AdminDeliveryDriver() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', active: true });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [savingQueueMode, setSavingQueueMode] = useState(false);
 
   useEffect(() => {
-    if (restaurantId) loadDrivers();
+    if (restaurantId) {
+      loadDrivers();
+      supabaseService.getSettings(restaurantId).then(s => setStoreSettings(s));
+    }
   }, [restaurantId]);
+
+  const handleToggleQueueMode = async () => {
+    if (!restaurantId || !storeSettings) return;
+    const newMode = !storeSettings.driverQueueMode;
+    setSavingQueueMode(true);
+    try {
+      const updated = await supabaseService.updateSettings(
+        { ...storeSettings, driverQueueMode: newMode },
+        restaurantId
+      );
+      setStoreSettings(updated);
+      toast.success(newMode ? 'Modo Fila ativado!' : 'Modo Direto ativado!');
+    } catch {
+      toast.error('Erro ao salvar configuração.');
+    } finally {
+      setSavingQueueMode(false);
+    }
+  };
 
   const loadDrivers = async () => {
     if (!restaurantId) return;
@@ -112,6 +135,53 @@ export default function AdminDeliveryDriver() {
           <Plus className="w-4 h-4" />
           Adicionar Entregador
         </button>
+      </div>
+
+      {/* ── Modo Fila Toggle ─────────────────────────────────────────────── */}
+      <div className={`rounded-2xl border-2 p-5 transition-all ${
+        storeSettings?.driverQueueMode
+          ? 'border-teal-400 bg-teal-50'
+          : 'border-gray-200 bg-white'
+      }`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            {storeSettings?.driverQueueMode
+              ? <Zap className="w-6 h-6 text-teal-600 shrink-0 mt-0.5" />
+              : <Users className="w-6 h-6 text-gray-400 shrink-0 mt-0.5" />}
+            <div>
+              <h2 className="font-bold text-gray-900 text-base">
+                Modo Fila de Entregadores
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">
+                {storeSettings?.driverQueueMode
+                  ? <><span className="font-semibold text-teal-700">Ativado (Competitivo):</span> Envia um link de aceite para todos os motoboys. O primeiro a clicar garante a entrega.</>
+                  : <><span className="font-semibold text-gray-600">Desativado (Direto):</span> O endereço e rota são enviados diretamente para todos os motoboys ativos ao aceitar o pedido.</>}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleQueueMode}
+            disabled={savingQueueMode || !storeSettings}
+            className="shrink-0 transition-colors disabled:opacity-50"
+          >
+            {savingQueueMode
+              ? <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+              : storeSettings?.driverQueueMode
+                ? <ToggleRight className="w-10 h-10 text-teal-600" />
+                : <ToggleLeft className="w-10 h-10 text-gray-400" />}
+          </button>
+        </div>
+
+        {storeSettings?.driverQueueMode && (
+          <div className="mt-4 pt-4 border-t border-teal-200">
+            <p className="text-xs text-teal-700 font-medium">📋 Exemplo de mensagem enviada aos motoboys:</p>
+            <div className="mt-2 bg-white border border-teal-200 rounded-xl p-3 text-xs text-gray-700 font-mono leading-relaxed whitespace-pre-wrap">{`🚀 NOVA ENTREGA DISPONÍVEL!
+📍 Bairro: [Bairro do cliente]
+💰 Taxa: R$ [valor]
+🔗 Clique para garantir: https://elevare-menu.vercel.app/[loja]/aceitar/[pedido]
+(Atenção: O endereço completo só aparece após o aceite no link)`}</div>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

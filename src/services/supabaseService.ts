@@ -188,7 +188,10 @@ class SupabaseService {
       customerIp: o.customer_ip,
       deliveryFee: o.delivery_fee,
       cardSubtype: o.card_subtype,
-      cardFee: o.card_fee
+      cardFee: o.card_fee,
+      driverName: o.driver_name ?? null,
+      driverPhone: o.driver_phone ?? null,
+      driverClaimedAt: o.driver_claimed_at ?? null,
     };
   }
 
@@ -515,6 +518,86 @@ class SupabaseService {
     if (error) throw error;
   }
 
+  /**
+   * Reads safe (non-sensitive) order data without authentication.
+   * Uses the get_order_public RPC (SECURITY DEFINER) to bypass RLS.
+   * Returns neighborhood + fee before claim; does NOT reveal address/phone.
+   */
+  async getOrderPublic(orderId: string): Promise<{
+    found: boolean;
+    id?: string;
+    neighborhood?: string;
+    deliveryFee?: number;
+    driverName?: string | null;
+    driverClaimedAt?: string | null;
+    status?: string;
+    claimable?: boolean;
+    // Full details — populated when order is already claimed
+    customerName?: string;
+    customerPhone?: string;
+    address?: string;
+    items?: any[];
+    observation?: string;
+  }> {
+    const { data, error } = await supabase.rpc('get_order_public', { p_order_id: orderId });
+    if (error) throw error;
+    if (!data?.found) return { found: false };
+    return {
+      found: true,
+      id: data.id,
+      neighborhood: data.neighborhood,
+      deliveryFee: Number(data.delivery_fee),
+      driverName: data.driver_name ?? null,
+      driverClaimedAt: data.driver_claimed_at ?? null,
+      status: data.status,
+      claimable: data.claimable,
+      customerName: data.customer_name,
+      customerPhone: data.customer_phone,
+      address: data.address,
+      items: data.items,
+      observation: data.observation,
+    };
+  }
+
+  /**
+   * Atomically claims a delivery for a driver.
+   * The PostgreSQL RPC guarantees only ONE driver can win the race.
+   * Uses claim_delivery RPC (SECURITY DEFINER) to bypass RLS.
+   */
+  async claimDelivery(orderId: string, driverName: string, driverPhone: string): Promise<{
+    success: boolean;
+    claimedBy?: string;
+    customerName?: string;
+    customerPhone?: string;
+    address?: string;
+    neighborhood?: string;
+    deliveryFee?: number;
+    observation?: string;
+    items?: any[];
+    driverPhone?: string;
+  }> {
+    const { data, error } = await supabase.rpc('claim_delivery', {
+      p_order_id:     orderId,
+      p_driver_name:  driverName,
+      p_driver_phone: driverPhone,
+    });
+    if (error) throw error;
+    if (!data.success) {
+      return { success: false, claimedBy: data.claimed_by };
+    }
+    return {
+      success: true,
+      customerName:  data.customer_name,
+      customerPhone: data.customer_phone,
+      address:       data.address,
+      neighborhood:  data.neighborhood,
+      deliveryFee:   Number(data.delivery_fee),
+      observation:   data.observation,
+      items:         data.items ?? [],
+      driverPhone:   data.driver_phone,
+    };
+  }
+
   // --- Settings ---
   async getSettings(restaurantId: string): Promise<StoreSettings | null> {
     const { data, error } = await supabase
@@ -569,7 +652,8 @@ class SupabaseService {
       msg_order_cancelled: data.msg_order_cancelled,
       msg_order_delivery_driver: data.msg_order_delivery_driver,
       msg_order_received: data.msg_order_received,
-      msg_lead_inactive_3days: data.msg_lead_inactive_3days
+      msg_lead_inactive_3days: data.msg_lead_inactive_3days,
+      driverQueueMode: data.driver_queue_mode ?? false,
     };
   }
 
@@ -624,6 +708,7 @@ class SupabaseService {
         msg_order_delivery_driver: settings.msg_order_delivery_driver,
         msg_order_received: settings.msg_order_received,
         msg_lead_inactive_3days: settings.msg_lead_inactive_3days,
+        driver_queue_mode: settings.driverQueueMode ?? false,
         updated_at: new Date().toISOString(),
         restaurant_id: restaurantId
       };
@@ -685,7 +770,8 @@ class SupabaseService {
       msg_order_cancelled: data.msg_order_cancelled,
       msg_order_delivery_driver: data.msg_order_delivery_driver,
       msg_order_received: data.msg_order_received,
-      msg_lead_inactive_3days: data.msg_lead_inactive_3days
+      msg_lead_inactive_3days: data.msg_lead_inactive_3days,
+      driverQueueMode: data.driver_queue_mode ?? false,
     };
   }
 

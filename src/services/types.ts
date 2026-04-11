@@ -78,6 +78,12 @@ export type Order = {
   customerIp?: string;
   createdAt: string;
   updatedAt: string;
+  /** Nome do entregador que aceitou via link (Modo Fila) */
+  driverName?: string | null;
+  /** Telefone/WhatsApp do entregador que aceitou */
+  driverPhone?: string | null;
+  /** Timestamp do aceite do entregador */
+  driverClaimedAt?: string | null;
 };
 
 export type CouponType = 'percentage' | 'fixed' | 'free_shipping';
@@ -161,6 +167,8 @@ export type StoreSettings = {
   msg_order_delivery_driver?: string;
   msg_order_received?: string;
   msg_lead_inactive_3days?: string;
+  /** Ativa o Modo Fila: envia link de aceite para motoboys em vez do endereço direto */
+  driverQueueMode?: boolean;
 };
 
 export type DeliveryDriver = {
