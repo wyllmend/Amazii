@@ -90,15 +90,36 @@ async function sendDriverWhatsApp(
     })
     .join('\n');
 
-  const message =
-    `📦 Entrega confirmada! Você garantiu esta corrida.\n\n` +
-    `Cliente: ${details.customerName} - ${details.customerPhone}\n` +
-    `Endereço: ${details.address} - ${details.neighborhood}\n` +
-    `Valor Frete: ${formatCurrency(details.deliveryFee)}\n\n` +
-    `Itens:\n${itemsText}\n\n` +
-    `📍 Link da Rota: ${mapsUrl}\n\n` +
-    `🔗 Seu link de entrega (salve!):\n${claimUrl}\n\n` +
-    `_(O link expira quando a entrega for finalizada)_`;
+  // Tenta buscar o template personalizado; usa fallback se falhar
+  let message: string;
+  try {
+    const restaurant = await supabaseService.getRestaurantBySlug(tenantSlug);
+    const settings = restaurant ? await supabaseService.getSettings(restaurant.id) : null;
+    const template = settings?.msg_delivery_confirmed ||
+      `📦 Entrega confirmada! Você garantiu esta corrida.\n\nCliente: {nome} - {telefone}\nEndereço: {endereco}\nValor Frete: {frete}\n\nItens:\n{resumo_pedido}\n\n📍 Link da Rota: {rota}\n\n🔗 Seu link de entrega (salve!):\n{link_entrega}\n\n_(O link expira quando a entrega for finalizada)_`;
+
+    message = template
+      .replace('{nome}', details.customerName)
+      .replace('{telefone}', details.customerPhone)
+      .replace('{endereco}', `${details.address} - ${details.neighborhood}`)
+      .replace('{frete}', formatCurrency(details.deliveryFee))
+      .replace('{resumo_pedido}', itemsText)
+      .replace('{rota}', mapsUrl)
+      .replace('{link_entrega}', claimUrl)
+      .replace('{bairro}', details.neighborhood)
+      .replace('{link_aceite}', claimUrl);
+  } catch {
+    // Fallback hardcoded caso a busca de settings falhe
+    message =
+      `📦 Entrega confirmada! Você garantiu esta corrida.\n\n` +
+      `Cliente: ${details.customerName} - ${details.customerPhone}\n` +
+      `Endereço: ${details.address} - ${details.neighborhood}\n` +
+      `Valor Frete: ${formatCurrency(details.deliveryFee)}\n\n` +
+      `Itens:\n${itemsText}\n\n` +
+      `📍 Link da Rota: ${mapsUrl}\n\n` +
+      `🔗 Seu link de entrega (salve!):\n${claimUrl}\n\n` +
+      `_(O link expira quando a entrega for finalizada)_`;
+  }
 
   await whatsappService.sendMessage(tenantSlug, driverPhone, message);
   console.log(`[DriverClaim] WhatsApp enviado para ${driverName} - ${driverPhone}`);
