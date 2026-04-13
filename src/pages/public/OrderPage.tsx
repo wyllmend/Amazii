@@ -213,15 +213,14 @@ export default function OrderPage() {
         </div>
       </div>
 
-      {/* CTA */}
       <div className="text-center pt-2">
-        <Link
-          to={baseUrl}
+        <a
+          href={baseUrl}
           className="inline-flex items-center gap-2 bg-amazii-primary text-white font-bold px-8 py-4 rounded-2xl shadow-lg shadow-amazii-primary/20 transition-all active:scale-[0.98]"
         >
           Fazer outro pedido
           <ArrowRight className="w-4 h-4" />
-        </Link>
+        </a>
         <p className="text-gray-400 text-xs mt-3">Atualiza automaticamente a cada 5s</p>
       </div>
     </div>
