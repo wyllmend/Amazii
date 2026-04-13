@@ -44,7 +44,8 @@ export default function CheckoutPage() {
 
   /** Builds a WhatsApp confirmation message that mirrors the printed receipt. */
   const buildConfirmationMessage = (order: any, storeName: string): string => {
-    const trackingUrl = `${window.location.origin}/pedido/${order.id}`;
+    const trackingBaseUrl = tenantSlug ? `${window.location.origin}/${tenantSlug}` : window.location.origin;
+    const trackingUrl = `${trackingBaseUrl}/pedido/${order.id}`;
 
     const paymentLabel = (() => {
       if (order.paymentMethod === 'credit_card') return `Cartão de ${order.cardSubtype === 'debit' ? 'Débito' : 'Crédito'}`;
@@ -320,7 +321,8 @@ export default function CheckoutPage() {
         console.warn('WhatsApp confirmation skipped:', err);
       }
 
-      navigate(`/${tenantSlug}/pedido/${order.id}`);
+      const redirectBase = tenantSlug ? `/${tenantSlug}` : '';
+      navigate(`${redirectBase}/pedido/${order.id}`);
     } catch (error) {
       console.error('Order error:', error);
       toast.error('Erro ao processar pedido. Tente novamente.');
