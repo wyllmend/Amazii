@@ -14,6 +14,9 @@ const VARIABLES = [
   { key: '{rota}', desc: 'Link do GPS/Rota' },
   { key: '{telefone}', desc: 'Telefone do cliente' },
   { key: '{resumo_pedido}', desc: 'Itens do pedido' },
+  { key: '{bairro}', desc: 'Bairro do cliente' },
+  { key: '{link_aceite}', desc: 'Link de aceite (Entregador)' },
+  { key: '{link_entrega}', desc: 'Link da entrega (Entregador ativo)' },
 ];
 
 const DEFAULT_MESSAGES = {
@@ -26,6 +29,8 @@ const DEFAULT_MESSAGES = {
   msg_order_delivery_driver: 'Novo pedido disponível! 📦\nCliente: {nome} - {telefone}\nEndereço: {endereco}\nValor Frete: {frete}\nLink da Rota: {rota}\nItens:\n{resumo_pedido}',
   msg_order_received: '✅ *Pedido recebido em {loja}!*\nNº {pedido}\n\n{resumo_pedido}',
   msg_lead_inactive_3days: 'E aí {nome}, bateu aquela fome de novo? 😄\nNosso cardápio tá aqui: {loja}',
+  msg_delivery_available: '🚀 NOVA ENTREGA DISPONÍVEL!\n📍 Bairro: {bairro}\n💰 Taxa: {frete}\n🔗 Clique para garantir: {link_aceite}\n(Atenção: O endereço completo só aparece após o aceite no link)',
+  msg_delivery_confirmed: '📦 Entrega confirmada! Você garantiu esta corrida.\n\nCliente: {nome} - {telefone}\nEndereço: {endereco}\nValor Frete: {frete}\n\nItens:\n{resumo_pedido}\n\n📍 Link da Rota: {rota}\n\n🔗 Seu link de entrega (salve!):\n{link_entrega}\n\n_(O link expira quando a entrega for finalizada)_',
 };
 
 const MESSAGE_LABELS: Record<string, { label: string; color: string; emoji: string }> = {
@@ -38,6 +43,8 @@ const MESSAGE_LABELS: Record<string, { label: string; color: string; emoji: stri
   msg_order_delivery_driver:{ label: 'Aviso para o Entregador Fixo', color: 'bg-teal-50 border-teal-200',      emoji: '🛵' },
   msg_order_received:     { label: 'Recebido pelo Sistema (Novo)', color: 'bg-yellow-50 border-yellow-200',  emoji: '📥' },
   msg_lead_inactive_3days:{ label: 'Cliente Inativo (3 dias sem pedir)', color: 'bg-orange-50 border-orange-200', emoji: '❤️' },
+  msg_delivery_available:   { label: 'Nova Entrega Disponível (Pool de Entregadores)', color: 'bg-teal-50 border-teal-200',      emoji: '🚀' },
+  msg_delivery_confirmed:   { label: 'Entrega Confirmada ao Entregador', color: 'bg-emerald-50 border-emerald-200',      emoji: '📦' },
 };
 
 type Messages = Record<string, string>;
@@ -75,6 +82,8 @@ export default function AdminWhatsAppMessages() {
           msg_order_delivery_driver: data.msg_order_delivery_driver || DEFAULT_MESSAGES.msg_order_delivery_driver,
           msg_order_received:     data.msg_order_received     || DEFAULT_MESSAGES.msg_order_received,
           msg_lead_inactive_3days: data.msg_lead_inactive_3days || DEFAULT_MESSAGES.msg_lead_inactive_3days,
+          msg_delivery_available: data.msg_delivery_available || DEFAULT_MESSAGES.msg_delivery_available,
+          msg_delivery_confirmed: data.msg_delivery_confirmed || DEFAULT_MESSAGES.msg_delivery_confirmed,
         });
       }
     } catch {
@@ -101,6 +110,8 @@ export default function AdminWhatsAppMessages() {
           msg_order_delivery_driver: messages.msg_order_delivery_driver,
           msg_order_received:     messages.msg_order_received,
           msg_lead_inactive_3days: messages.msg_lead_inactive_3days,
+          msg_delivery_available: messages.msg_delivery_available,
+          msg_delivery_confirmed: messages.msg_delivery_confirmed,
           updated_at: new Date().toISOString(),
         })
         .eq('restaurant_id', restaurantId);
