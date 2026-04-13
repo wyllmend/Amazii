@@ -653,6 +653,8 @@ class SupabaseService {
       msg_order_delivery_driver: data.msg_order_delivery_driver,
       msg_order_received: data.msg_order_received,
       msg_lead_inactive_3days: data.msg_lead_inactive_3days,
+      msg_delivery_available: data.msg_delivery_available,
+      msg_delivery_confirmed: data.msg_delivery_confirmed,
       driverQueueMode: data.driver_queue_mode ?? false,
     };
   }
@@ -708,6 +710,8 @@ class SupabaseService {
         msg_order_delivery_driver: settings.msg_order_delivery_driver,
         msg_order_received: settings.msg_order_received,
         msg_lead_inactive_3days: settings.msg_lead_inactive_3days,
+        msg_delivery_available: settings.msg_delivery_available,
+        msg_delivery_confirmed: settings.msg_delivery_confirmed,
         driver_queue_mode: settings.driverQueueMode ?? false,
         updated_at: new Date().toISOString(),
         restaurant_id: restaurantId
@@ -771,6 +775,8 @@ class SupabaseService {
       msg_order_delivery_driver: data.msg_order_delivery_driver,
       msg_order_received: data.msg_order_received,
       msg_lead_inactive_3days: data.msg_lead_inactive_3days,
+      msg_delivery_available: data.msg_delivery_available,
+      msg_delivery_confirmed: data.msg_delivery_confirmed,
       driverQueueMode: data.driver_queue_mode ?? false,
     };
   }

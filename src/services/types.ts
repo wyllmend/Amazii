@@ -167,6 +167,8 @@ export type StoreSettings = {
   msg_order_delivery_driver?: string;
   msg_order_received?: string;
   msg_lead_inactive_3days?: string;
+  msg_delivery_available?: string;
+  msg_delivery_confirmed?: string;
   /** Ativa o Modo Fila: envia link de aceite para motoboys em vez do endereço direto */
   driverQueueMode?: boolean;
 };

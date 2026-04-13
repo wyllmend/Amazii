@@ -231,12 +231,16 @@ export default function AdminOrders() {
           if (queueMode) {
             // ── Modo Fila: envia link competitivo ──────────────────────────
             const claimUrl = `https://elevare-menu.vercel.app/${tenantSlug}/aceitar/${order.id}`;
-            const queueMsg =
+            const defaultQueueMsg =
               `🚀 NOVA ENTREGA DISPONÍVEL!\n` +
-              `📍 Bairro: ${order.neighborhood || 'Verificar no link'}\n` +
-              `💰 Taxa: ${formatCurrency(order.deliveryFee)}\n` +
-              `🔗 Clique para garantir: ${claimUrl}\n` +
+              `📍 Bairro: {bairro}\n` +
+              `💰 Taxa: {frete}\n` +
+              `🔗 Clique para garantir: {link_aceite}\n` +
               `(Atenção: O endereço completo só aparece após o aceite no link)`;
+            const queueTemplate = settingsRef.current?.msg_delivery_available || defaultQueueMsg;
+            const queueMsg = applyVariables(queueTemplate)
+              .replace('{bairro}', order.neighborhood || 'Verificar no link')
+              .replace('{link_aceite}', claimUrl);
 
             for (const driver of activeDrivers) {
               await whatsappService.sendMessage(tenantSlug, driver.phone, queueMsg);
