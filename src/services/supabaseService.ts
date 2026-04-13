@@ -118,6 +118,16 @@ class SupabaseService {
     if (error) throw error;
   }
 
+  async getSlugByRestaurantId(id: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('slug')
+      .eq('id', id)
+      .single();
+    if (error || !data) return null;
+    return data.slug;
+  }
+
   // --- Categories ---
   async getCategories(restaurantId: string): Promise<Category[]> {
     const { data, error } = await supabase

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabaseService } from '@/services/supabaseService';
 import { Order } from '@/services/types';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
@@ -7,6 +7,7 @@ import { Loader2, CheckCircle, Clock, Package, Truck, XCircle, MapPin, Store, Ph
 
 export default function OrderPage() {
   const { id, tenantSlug } = useParams<{ id?: string, tenantSlug?: string }>();
+  const navigate = useNavigate();
   const baseUrl = tenantSlug ? `/${tenantSlug}` : '/';
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -17,6 +18,18 @@ export default function OrderPage() {
       if (!id) return;
       try {
         const data = await supabaseService.getOrderById(id);
+        
+        // --- AUTO-HEAL OLD URLs ---
+        // Se a url for /pedido/123 sem o slug da loja, descobrimos o slug e redirecionamos.
+        // Isso resolve o problema de links antigos do WhatsApp ou SMS
+        if (data && !tenantSlug && (data as any).restaurant_id) {
+          const actualSlug = await supabaseService.getSlugByRestaurantId((data as any).restaurant_id);
+          if (actualSlug) {
+            window.location.replace(`/${actualSlug}/pedido/${id}`);
+            return;
+          }
+        }
+
         setOrder(data || null);
       } catch (e) {
         console.error(e);
@@ -27,7 +40,7 @@ export default function OrderPage() {
     fetchOrder();
     const interval = setInterval(fetchOrder, 5000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, tenantSlug]);
 
   if (loading) {
     return (
@@ -214,13 +227,13 @@ export default function OrderPage() {
       </div>
 
       <div className="text-center pt-2">
-        <a
-          href={baseUrl}
+        <Link
+          to={baseUrl}
           className="inline-flex items-center gap-2 bg-amazii-primary text-white font-bold px-8 py-4 rounded-2xl shadow-lg shadow-amazii-primary/20 transition-all active:scale-[0.98]"
         >
           Fazer outro pedido
           <ArrowRight className="w-4 h-4" />
-        </a>
+        </Link>
         <p className="text-gray-400 text-xs mt-3">Atualiza automaticamente a cada 5s</p>
       </div>
     </div>
